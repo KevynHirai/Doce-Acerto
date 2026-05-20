@@ -1,0 +1,9 @@
+{
+  "levels": [
+    { "id": 1, "name": "\ud83c\udf6d Colina dos Pirulitos", "pattern": "AB", "colors": 2, "seqs": 6, "seqLenBase": 6, "emoji": "\ud83c\udf6d", "storyBg": "url('assets/img/backgrounds_fases_doce_acerto/01-colina-dos-pirulitos.png') center center / cover no-repeat" },
+    { "id": 2, "name": "\ud83c\udf70 Plan\u00edcie do Bolo", "pattern": "AB", "colors": 2, "seqs": 7, "seqLenBase": 7, "emoji": "\ud83c\udf70", "storyBg": "url('assets/img/backgrounds_fases_doce_acerto/02-planicie-do-bolo.png') center center / cover no-repeat" },
+    { "id": 3, "name": "\ud83c\udf6b Montanha de Chocolate", "pattern": "ABC", "colors": 3, "seqs": 8, "seqLenBase": 7, "emoji": "\ud83c\udf6b", "storyBg": "url('assets/img/backgrounds_fases_doce_acerto/03-montanha-de-chocolate.png') center center / cover no-repeat" },
+    { "id": 4, "name": "\ud83c\udf66 Vale do Sorvete", "pattern": "ABC", "colors": 3, "seqs": 10, "seqLenBase": 8, "emoji": "\ud83c\udf66", "storyBg": "url('assets/img/backgrounds_fases_doce_acerto/04-vale-do-sorvete.png') center center / cover no-repeat" },
+    { "id": 5, "name": "\ud83c\udff0 Castelo de A\u00e7\u00facar", "pattern": "ABC", "colors": 3, "seqs": 12, "seqLenBase": 9, "emoji": "\ud83c\udff0", "storyBg": "url('assets/img/backgrounds_fases_doce_acerto/05-castelo-de-acucar.png') center center / cover no-repeat" }
+  ]
+}

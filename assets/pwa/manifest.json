@@ -1,0 +1,18 @@
+{
+  "name": "Doce Acerto",
+  "short_name": "Doce Acerto",
+  "description": "Jogo educativo e lúdico de reconhecimento de padrões e sequências de cores.",
+  "start_url": "../../index.html",
+  "scope": "../../",
+  "display": "fullscreen",
+  "background_color": "#1a0a2e",
+  "theme_color": "#FF6EB4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "../icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
