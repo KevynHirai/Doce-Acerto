@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <meta name="theme-color" content="#FF6EB4">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="assets/pwa/manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-512.png">
+  <title>Doce Acerto 🍬</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body>
+  <div id="loadingOverlay"
+    style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#FF6EB4;color:white;z-index:10000;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;">
+    <div style="font-size:3rem;animation:bounce 1s infinite alternate;">🍬</div>
+    <h2 style="margin-top:20px;">Carregando...</h2>
+    <style>
+      @keyframes bounce {
+        from {
+          transform: translateY(0);
+        }
+
+        to {
+          transform: translateY(-20px);
+        }
+      }
+    </style>
+  </div>
+  <div id="game">
+    <canvas id="particleCanvas"></canvas>
+    <div id="flashOverlay"></div>
+
+    <!-- ===== MENU ===== -->
+    <div id="menuScreen" class="screen active">
+      <div class="candy-bg"></div>
+      <div class="cloud cloud-1"></div>
+      <div class="cloud cloud-2"></div>
+      <div class="caramel-river"></div>
+
+      <!-- Decoração visual da tela inicial -->
+      <div class="menu-scenery" aria-hidden="true">
+        <div class="rainbow-arc"></div>
+        <div class="sweet-hill hill-left"></div>
+        <div class="sweet-hill hill-center"></div>
+        <div class="sweet-hill hill-right"></div>
+        <div class="fruit-house strawberry-house">
+          <span class="house-leaf leaf-a"></span>
+          <span class="house-leaf leaf-b"></span>
+          <span class="house-window window-a"></span>
+          <span class="house-window window-b"></span>
+          <span class="house-door"></span>
+        </div>
+        <div class="fruit-house pineapple-house">
+          <span class="pine-leaf p1"></span>
+          <span class="pine-leaf p2"></span>
+          <span class="pine-leaf p3"></span>
+          <span class="house-window window-a"></span>
+          <span class="house-door"></span>
+        </div>
+        <div class="lollipop lollipop-left"></div>
+        <div class="lollipop lollipop-right"></div>
+        <div class="flower f1"></div>
+        <div class="flower f2"></div>
+        <div class="flower f3"></div>
+        <div class="flower f4"></div>
+        <div class="candy-stone s1"></div>
+        <div class="candy-stone s2"></div>
+        <div class="candy-stone s3"></div>
+        <div class="candy-stone s4"></div>
+      </div>
+
+      <div class="sparkle" style="top:12%;left:5%;"></div>
+      <div class="sparkle sparkle-soft" style="top:24%;left:78%;animation-delay:.7s;"></div>
+      <div class="sparkle" style="top:40%;left:90%;animation-delay:1s;"></div>
+
+      <div id="settingsGear" title="Área do Professor (segurar 3s)">⚙️</div>
+
+      <div class="logo-container">
+        <img class="game-logo-img" src="assets/imgs/logo-doce-acerto.png" alt="Doce Acerto - aprenda brincando">
+      </div>
+
+      <div class="mascots-row" id="menuMascots"></div>
+
+      <div class="menu-buttons">
+        <button type="button" class="btn-glossy btn-pink" id="btnTutorial" aria-label="Tutorial"
+          onclick="GameEngine.startMode('tutorial')">🧸 TUTORIAL</button>
+        <div id="wrapStory" class="menu-locked">
+          <button type="button" class="btn-glossy btn-choco" id="btnStory" aria-label="Modo História"
+            onclick="GameEngine.showMap()">🗺️ HISTÓRIA</button>
+          <div class="menu-hint" id="hintStory" aria-hidden="true">Complete o tutorial para desbloquear</div>
+        </div>
+
+        <div class="menu-secondary-buttons">
+          <button type="button" class="btn-glossy btn-gold" aria-label="Álbum de Recompensas"
+            onclick="GameEngine.showAlbum()">📖 ÁLBUM</button>
+          <button type="button" class="btn-glossy btn-green" aria-label="Área do Professor"
+            onclick="ProfessorPanel.open()">🏫 PROFESSOR</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MAPA DE FASES ===== -->
+    <div id="mapScreen" class="screen">
+      <div class="candy-bg"></div>
+      <div class="cloud cloud-1" style="animation-duration:22s"></div>
+      <div class="caramel-river"></div>
+      <div class="map-header">
+        <button type="button" class="btn-back" onclick="GameEngine.showMenu()">← VOLTAR</button>
+        <div class="map-title">🗺️ Mapa de Fases</div>
+        <div style="width:72px"></div>
+      </div>
+      <div id="mapMissionBanner" class="map-mission" style="display:none;"></div>
+      <svg id="mapSvg" class="map-path" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path id="mapPathRoad" fill="none" stroke="#f4c27a" stroke-width="8" stroke-linecap="round" opacity="0.85" />
+        <path id="mapPathDash" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="4 5" opacity="0.9" />
+      </svg>
+      <div id="mapDecor"></div>
+      <div id="mapNodes" style="position:absolute;top:0;left:0;right:0;bottom:0;z-index:15;"></div>
+    </div>
+
+    <!-- ===== GAMEPLAY ===== -->
+    <div id="gameplayScreen" class="screen">
+      <div id="gameplayBg" class="gameplay-layer bg-tutorial"></div>
+      <div class="gameplay-header">
+        <button type="button" class="btn-back" onclick="GameEngine.showMenu()">← MENU</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span id="comboHeart" class="combo-heart hidden">💖</span>
+          <div class="score-wrap" aria-live="polite" aria-atomic="true">
+            <div id="scoreDisplay" class="score-display">⭐ 0</div>
+            <div id="floatingScoreAnchor" style="position:relative;width:1px;height:1px;"></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+          <span id="levelHud" class="level-hud" style="display:none;"></span>
+          <span id="multBadge" class="mult-badge" style="display:none;">x1</span>
+          <span id="modeBadge" class="mode-badge"></span>
+        </div>
+      </div>
+      <div class="phase-progress">
+        <div id="phaseProgressFill" class="phase-progress-fill" style="width:0%"></div>
+      </div>
+
+      <div id="tutorialWelcome" class="tutorial-welcome hidden">
+        <div class="tw-box">
+          <div class="tw-stage" aria-hidden="true">
+            <span class="tw-spark tw-spark-a"></span>
+            <span class="tw-spark tw-spark-b"></span>
+            <div id="twMascot" class="tw-mascot"></div>
+          </div>
+          <div class="tw-kicker">Tutorial guiado</div>
+          <h2>Bem-vindo ao Doce Acerto!</h2>
+          <p id="twText">Oi! Eu sou a maça! Vamos aprender juntos?</p>
+          <div class="tw-steps" aria-hidden="true">
+            <span><strong>1</strong> Observe</span>
+            <span><strong>2</strong> Descubra</span>
+            <span><strong>3</strong> Toque</span>
+          </div>
+          <button type="button" class="btn-glossy btn-pink" onclick="TutorialManager.dismissWelcome()">Vamos lá!
+            🍎</button>
+        </div>
+      </div>
+
+      <div id="tutorialMsg" class="tutorial-msg" style="display:none;" aria-live="polite"></div>
+      <canvas id="gameCanvas"></canvas>
+
+      <div class="answer-btns" id="answerBtns"></div>
+    </div>
+
+    <!-- ===== RESULTADO ===== -->
+    <div id="resultScreen" class="screen">
+      <div class="candy-bg"></div>
+      <div class="cloud cloud-2"></div>
+      <div class="result-content" id="resultContent"></div>
+    </div>
+
+    <!-- ===== PROFESSOR ===== -->
+    <div id="professorPanel">
+      <div class="prof-content">
+        <button type="button" class="prof-close" onclick="ProfessorPanel.close()">✕</button>
+        <div class="prof-title">🏫 Área do Professor / Pais</div>
+
+        <div class="prof-section">
+          <h3>📊 Última nota pedagógica</h3>
+          <div class="big-score" id="profScore">--</div>
+          <div class="score-desc" id="profScoreDesc" style="text-align:center;color:#666;font-size:0.88rem;">Nenhuma
+            sessão ainda</div>
+        </div>
+
+        <div class="prof-section">
+          <h3>📈 Evolução dos acertos (últimas 5 partidas)</h3>
+          <div class="prof-chart-wrap"><canvas id="profEvolutionCanvas" width="480" height="120"></canvas></div>
+          <div class="bar-chart" id="sessionAccuracyChart" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="prof-section">
+          <h3>🎨 Erros por cor (taxa)</h3>
+          <div class="bar-chart" id="colorErrorChart"></div>
+        </div>
+
+        <div class="prof-section">
+          <h3>⏱️ Tempo médio de resposta por cor</h3>
+          <div class="bar-chart" id="responseTimeChart"></div>
+        </div>
+
+        <div class="prof-section">
+          <h3>🧗 Fase com mais dificuldade</h3>
+          <p id="hardestPhase" style="font-size:0.9rem;color:#444;">—</p>
+        </div>
+
+        <div class="prof-section">
+          <h3>📋 Histórico de sessões</h3>
+          <ul class="session-list" id="sessionList"></ul>
+        </div>
+
+        <div class="prof-section">
+          <h3>⚔️ Nível de Dificuldade</h3>
+          <div class="speed-btns">
+            <button type="button" class="speed-btn" data-speed="slow"
+              onclick="ProfessorPanel.setSpeed('slow')">Fácil</button>
+            <button type="button" class="speed-btn active" data-speed="normal"
+              onclick="ProfessorPanel.setSpeed('normal')">Médio</button>
+            <button type="button" class="speed-btn" data-speed="fast"
+              onclick="ProfessorPanel.setSpeed('fast')">Difícil</button>
+          </div>
+        </div>
+
+
+
+        <div class="prof-section">
+          <h3>🏷️ Rótulos nas bolinhas</h3>
+          <button type="button" class="toggle-btn" id="toggleLabels" onclick="ProfessorPanel.toggleLabels()">Mostrar
+            nomes: OFF</button>
+        </div>
+
+        <div class="prof-section">
+          <h3>👁️ Modo daltônico (formas nas bolinhas)</h3>
+          <button type="button" class="toggle-btn" id="toggleDalton" onclick="ProfessorPanel.toggleDaltonism()">Modo
+            daltônico: OFF</button>
+        </div>
+
+        <div class="prof-section">
+          <h3>👀 Acessibilidade (Alto Contraste)</h3>
+          <button type="button" class="toggle-btn" id="toggleAccess" onclick="ProfessorPanel.toggleAccessibility()">Modo
+            Acessibilidade: OFF</button>
+        </div>
+
+        <div class="prof-section">
+          <button type="button" class="btn-danger" onclick="ProfessorPanel.clearAllData()">🗑️ Limpar dados (histórico e
+            métricas)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ÁLBUM ===== -->
+    <div id="albumScreen" class="screen">
+      <div class="candy-bg"></div>
+      <div class="cloud cloud-1" style="animation-duration:26s"></div>
+      <div class="map-header">
+        <button type="button" class="btn-back" onclick="GameEngine.showMenu()" aria-label="Voltar ao início">←
+          VOLTAR</button>
+        <div class="map-title">📖 Álbum de Figurinhas</div>
+        <div style="width:72px"></div>
+      </div>
+
+      <div style="position:absolute; top: 60px; left:0; right:0; bottom:0; overflow-y:auto; padding: 20px; z-index:20;">
+        <div
+          style="text-align:center; margin-bottom: 20px; color:#5a2a00; font-weight:900; font-size:1.1rem; background:rgba(255,255,255,0.7); padding: 12px; border-radius: 16px; display:inline-block;">
+          Tens <span id="albumTotalStars" style="font-size:1.4rem; color:#d4a800;">0</span> ⭐ para trocar por figurinhas
+          novas!
+        </div>
+        <div id="albumGrid"
+          style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 16px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="assets/js/script.js"></script>
+</body>
+
+</html>
