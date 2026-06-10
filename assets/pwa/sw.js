@@ -1,4 +1,4 @@
-const CACHE_NAME = 'doce-acerto-v26';
+const CACHE_NAME = 'doce-acerto-v27';
 const ASSETS = [
   '../../index.html',
   './manifest.json',

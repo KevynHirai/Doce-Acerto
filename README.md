@@ -47,3 +47,14 @@ if (window.setGameConfig) {
 ```
 
 (Para consultar os gráficos de desempenho imediatos na própria página, clicar ou reter 3 segundos o botão ⚙️ no ecrã principal para aceder à *Área do Professor*).
+
+## Atualizações pedagógicas e de acessibilidade
+
+- A dificuldade é centralizada em `DIFFICULTY_CONFIG` com os níveis `easy`, `normal` e `hard`, mantendo compatibilidade com configurações antigas.
+- A nota pedagógica usa escala 0-100 com peso para acertos de primeira tentativa, acertos totais, eficiência de tentativas e tempo médio.
+- A próxima fase só é desbloqueada quando a criança atinge a nota mínima da dificuldade atual.
+- O Modo Descoberta permite exploração livre sem nota, aprovação ou reprovação.
+- A narração por voz é opcional e usa `speechSynthesis`, podendo ser ativada no Painel do Professor.
+- O Modo Calmo reduz partículas, brilho, movimento e volume, e respeita `prefers-reduced-motion`.
+- Os símbolos das cores podem ser ativados independentemente do modo daltônico.
+- O painel do professor mostra dicas usadas, perfil pedagógico, medalhas temporárias e permite baixar `session-report.json`.

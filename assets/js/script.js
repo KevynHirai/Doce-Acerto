@@ -39,7 +39,7 @@ const CONFIG = {
 };
 
 const DIFFICULTY_CONFIG = {
-  slow: {
+  easy: {
     label: "Fácil",
     speedMultiplier: 0.75,
     minGradeToPass: 60,
@@ -67,7 +67,7 @@ const DIFFICULTY_CONFIG = {
     teacherText: "Mais cores, sequência um pouco maior e aprovação a partir de 70.",
     childPassText: "Muito bom! Você está pronto para continuar!"
   },
-  fast: {
+  hard: {
     label: "Difícil",
     speedMultiplier: 1.25,
     minGradeToPass: 80,
@@ -81,6 +81,14 @@ const DIFFICULTY_CONFIG = {
     teacherText: "Mais velocidade, mais cores, sequência maior e aprovação a partir de 80.",
     childPassText: "Excelente! Você dominou essa fase!"
   }
+};
+
+const DIFFICULTY_ALIASES = {
+  slow: 'easy',
+  easy: 'easy',
+  normal: 'normal',
+  fast: 'hard',
+  hard: 'hard'
 };
 
 // ===== CORES — cada uma com fruta ou doce próprio (emoji visível em todo dispositivo) =====
@@ -136,8 +144,9 @@ const MachineAssetManager = {
   }
 };
 
-// Forma interna por cor (modo daltônico): 0=triângulo, 1=quadrado, 2=estrela, 3=círculo interno, 4=cruz, 5=x
-const SHAPE_BY_COLOR = { red: 0, blue: 1, yellow: 2, green: 3, orange: 4, purple: 5 };
+// Forma por cor: vermelho=estrela, azul=triângulo, verde=quadrado, amarelo=círculo, laranja=cruz, roxo=losango.
+const SHAPE_BY_COLOR = { red: 0, blue: 1, green: 2, yellow: 3, orange: 4, purple: 5 };
+const SHAPE_SYMBOL_BY_COLOR = { red: '★', blue: '▲', green: '■', yellow: '●', orange: '✚', purple: '◆' };
 
 // ===== getMascotSVG =====
 function getMascotSVG(idx, size) {
@@ -213,7 +222,7 @@ const StorageManager = {
       if (data[k] === undefined) data[k] = def[k];
     }
     data.settings = Object.assign({}, def.settings, data.settings || {});
-    if (!DIFFICULTY_CONFIG[data.settings.speed]) data.settings.speed = def.settings.speed;
+    data.settings.speed = normalizeDifficultyKey(data.settings.speed);
     for (const c of COLORS) {
       if (data.colorErrors[c.id] === undefined) data.colorErrors[c.id] = 0;
       if (data.colorTotal[c.id] === undefined) data.colorTotal[c.id] = 0;
@@ -232,7 +241,15 @@ const StorageManager = {
       sessions: [],
       highScore: 0,
       rewardStickers: [],
-      settings: { speed: 'normal', showLabels: false, colorblind: false, accessibility: false },
+      settings: {
+        speed: 'normal',
+        showLabels: false,
+        showShapes: false,
+        colorblind: false,
+        accessibility: false,
+        narration: false,
+        calmMode: false
+      },
       colorErrors: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
       colorTotal: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
       responseTimeSum: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
@@ -246,7 +263,7 @@ const StorageManager = {
 };
 
 function normalizeDifficultyKey(key) {
-  return DIFFICULTY_CONFIG[key] ? key : 'normal';
+  return DIFFICULTY_ALIASES[key] || 'normal';
 }
 
 function getDifficultyConfig(key) {
@@ -306,6 +323,64 @@ function getStarsFromGrade(nota, passed) {
   if (nota >= 90) return 3;
   if (nota >= 70) return 2;
   return 1;
+}
+
+function ratingStars(value) {
+  const v = Math.max(0, Math.min(5, Math.round(value)));
+  return '★'.repeat(v) + '☆'.repeat(5 - v);
+}
+
+function buildPedagogicalProfile(session) {
+  if (!session) {
+    return [
+      { label: 'Memória', stars: '☆☆☆☆☆' },
+      { label: 'Atenção', stars: '☆☆☆☆☆' },
+      { label: 'Velocidade', stars: '☆☆☆☆☆' },
+      { label: 'Reconhecimento de padrões', stars: '☆☆☆☆☆' }
+    ];
+  }
+  const total = Math.max(1, session.totalRounds || 0);
+  const firstTryRate = (session.firstTryCorrect || 0) / total;
+  const finalRate = (session.correctRounds || 0) / total;
+  const attemptEfficiency = clamp01(1 - (((session.totalAttempts || total) - total) / total));
+  const timeScore = calculateTimeScore(session.avgResponseTime || 0, session.difficulty || 'normal');
+  return [
+    { label: 'Memória', stars: ratingStars(firstTryRate * 5) },
+    { label: 'Atenção', stars: ratingStars(attemptEfficiency * 5) },
+    { label: 'Velocidade', stars: ratingStars(timeScore * 5) },
+    { label: 'Reconhecimento de padrões', stars: ratingStars(finalRate * 5) }
+  ];
+}
+
+function buildSessionBadges(session) {
+  if (!session) return [];
+  const total = Math.max(1, session.totalRounds || 0);
+  const firstTryRate = (session.firstTryCorrect || 0) / total;
+  const finalRate = (session.correctRounds || 0) / total;
+  const avgTime = session.avgResponseTime || 0;
+  const badges = [];
+  if (finalRate >= 0.9) badges.push('🏅 Mestre das Cores');
+  if (firstTryRate >= 0.8) badges.push('🏅 Memória Excelente');
+  if ((session.wrongAttempts || 0) <= Math.max(1, Math.floor(total * 0.2))) badges.push('🏅 Observador Atento');
+  if (avgTime > 0 && avgTime <= 3000) badges.push('🏅 Velocidade Relâmpago');
+  if ((session.wrongAttempts || 0) >= 3 && finalRate >= 0.8) badges.push('🏅 Persistência');
+  return badges.length ? badges : ['🏅 Explorador de Padrões'];
+}
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function isCalmMode() {
+  const settings = StorageManager.get().settings || {};
+  return !!settings.calmMode || prefersReducedMotion();
+}
+
+function applyBodySettingsClasses() {
+  const settings = StorageManager.get().settings || {};
+  document.body.classList.toggle('high-contrast-mode', !!settings.accessibility);
+  document.body.classList.toggle('calm-mode', isCalmMode());
 }
 
 // ===== Máquina de estados (telas) =====
@@ -441,13 +516,14 @@ const AudioManager = {
   },
   _play(freq, type, duration, vol, delay) {
     if (!this.ctx || !this.enabled) return;
+    const finalVol = vol * (isCalmMode() ? 0.35 : 1);
     const t = this.ctx.currentTime + (delay || 0);
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.connect(gain); gain.connect(this.ctx.destination);
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(vol, t);
+    gain.gain.setValueAtTime(finalVol, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
     osc.start(t); osc.stop(t + duration + 0.02);
   },
@@ -457,7 +533,7 @@ const AudioManager = {
     o.connect(g); g.connect(this.ctx.destination);
     o.type = 'sine'; o.frequency.setValueAtTime(880, this.ctx.currentTime);
     o.frequency.exponentialRampToValueAtTime(220, this.ctx.currentTime + 0.12);
-    g.gain.setValueAtTime(0.28, this.ctx.currentTime);
+    g.gain.setValueAtTime(isCalmMode() ? 0.08 : 0.28, this.ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
     o.start(); o.stop(this.ctx.currentTime + 0.15);
   },
@@ -520,7 +596,12 @@ const AudioManager = {
 
 // ===== SpeechManager =====
 const SpeechManager = {
+  isEnabled() {
+    const settings = StorageManager.get().settings || {};
+    return !!settings.narration;
+  },
   speak(text) {
+    if (!this.isEnabled()) return;
     if (!window.speechSynthesis) return;
     try {
       speechSynthesis.cancel();
@@ -584,13 +665,13 @@ const VisualEffects = {
     this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight;
   },
   _trimToMax() {
-    const max = CONFIG.MAX_PARTICULAS_ATIVAS;
+    const max = isCalmMode() ? Math.floor(CONFIG.MAX_PARTICULAS_ATIVAS * 0.35) : CONFIG.MAX_PARTICULAS_ATIVAS;
     if (this.particles.length > max) {
       this.particles.splice(0, this.particles.length - max);
     }
   },
   burst(x, y, count) {
-    count = Math.min(count, 48);
+    count = Math.min(isCalmMode() ? Math.ceil(count * 0.35) : count, 48);
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 3 + Math.random() * 7;
@@ -605,7 +686,7 @@ const VisualEffects = {
     this._trimToMax();
   },
   smokeBurst(x, y, count) {
-    count = Math.min(count, 32);
+    count = Math.min(isCalmMode() ? Math.ceil(count * 0.35) : count, 32);
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 0.4 + Math.random() * 1.8;
@@ -621,7 +702,7 @@ const VisualEffects = {
   },
   trail(x1, y1, x2, y2, color) {
     const dist = Math.hypot(x2 - x1, y2 - y1);
-    const count = Math.min(24, Math.max(10, Math.floor(dist / 15)));
+    const count = isCalmMode() ? 5 : Math.min(24, Math.max(10, Math.floor(dist / 15)));
     for (let i = 0; i < count; i++) {
       const t = i / count;
       const x = x1 + (x2 - x1) * t;
@@ -649,7 +730,8 @@ const VisualEffects = {
   },
   candyRain() {
     const icons = ['🍬', '🍭', '🍫', '🧁', '🎂'];
-    for (let i = 0; i < 24; i++) {
+    const total = isCalmMode() ? 8 : 24;
+    for (let i = 0; i < total; i++) {
       const el = document.createElement('div');
       el.textContent = icons[Math.floor(Math.random() * icons.length)];
       el.style.cssText = 'position:fixed;top:-40px;left:' + (Math.random() * 100) + '%;font-size:' + (1.3 + Math.random()) + 'rem;z-index:999;pointer-events:none;';
@@ -687,6 +769,7 @@ const PedagogyTracker = {
       firstTryCorrect: 0,
       wrongAttempts: 0,
       totalAttempts: 0,
+      hintCount: 0,
       responseTimes: [],
       roundsDetail: [],
       colorErrors: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
@@ -765,6 +848,9 @@ const PedagogyTracker = {
       d.responseTimeCount[colorId] = (d.responseTimeCount[colorId] || 0) + 1;
     });
   },
+  recordHint() {
+    if (this.session) this.session.hintCount++;
+  },
   setComplexBonus(v) { if (this.session) this.session.complexBonus = v; },
   endSession() {
     if (!this.session) return null;
@@ -817,10 +903,13 @@ const PedagogyTracker = {
       firstTryCorrect: s.firstTryCorrect,
       wrongAttempts: s.wrongAttempts,
       totalAttempts: s.totalAttempts,
+      hintCount: s.hintCount,
       avgResponseTime: Math.round(avgResponseTime),
       recommendation,
       roundsDetail: s.roundsDetail
     };
+    sessionData.badges = buildSessionBadges(sessionData);
+    sessionData.profile = buildPedagogicalProfile(sessionData);
 
     if (s.mode !== 'tutorial') {
       StorageManager.set(d => {
@@ -927,12 +1016,6 @@ function drawDaltonShape(ctx, x, y, r, shapeKind) {
   ctx.lineWidth = Math.max(1.5, r * 0.08);
   const s = r * 0.45;
   if (shapeKind === 0) {
-    ctx.beginPath();
-    ctx.moveTo(x, y - s); ctx.lineTo(x - s * 0.9, y + s * 0.75); ctx.lineTo(x + s * 0.9, y + s * 0.75);
-    ctx.closePath(); ctx.stroke();
-  } else if (shapeKind === 1) {
-    ctx.strokeRect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
-  } else if (shapeKind === 2) {
     for (let i = 0; i < 5; i++) {
       const a = (i * 4 * Math.PI / 5) - Math.PI / 2;
       const b = a + Math.PI / 5;
@@ -943,12 +1026,18 @@ function drawDaltonShape(ctx, x, y, r, shapeKind) {
       ctx.lineTo(x2, y2);
     }
     ctx.closePath(); ctx.stroke();
+  } else if (shapeKind === 1) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - s); ctx.lineTo(x - s * 0.9, y + s * 0.75); ctx.lineTo(x + s * 0.9, y + s * 0.75);
+    ctx.closePath(); ctx.stroke();
+  } else if (shapeKind === 2) {
+    ctx.strokeRect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
   } else if (shapeKind === 3) {
     ctx.beginPath(); ctx.arc(x, y, s * 0.55, 0, Math.PI * 2); ctx.stroke();
   } else if (shapeKind === 4) {
     ctx.beginPath(); ctx.moveTo(x, y - s * 0.7); ctx.lineTo(x, y + s * 0.7); ctx.moveTo(x - s * 0.7, y); ctx.lineTo(x + s * 0.7, y); ctx.stroke();
   } else if (shapeKind === 5) {
-    ctx.beginPath(); ctx.moveTo(x - s * 0.6, y - s * 0.6); ctx.lineTo(x + s * 0.6, y + s * 0.6); ctx.moveTo(x + s * 0.6, y - s * 0.6); ctx.lineTo(x - s * 0.6, y + s * 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.8, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.8, y); ctx.closePath(); ctx.stroke();
   }
   ctx.restore();
 }
@@ -1025,6 +1114,7 @@ const Gameplay = {
   mult: 1,
   infiniteTier: 1,
   infinitePattern: 'AB',
+  currentPatternType: 'AB',
   transitionPhase: 'idle',
   mistakesThisLevel: 0,
   _onResize: null,
@@ -1135,8 +1225,12 @@ const Gameplay = {
     else if (mode === 'infinite') progressTier = this.infiniteTier;
     this.colors = COLORS.slice(0, this.getTargetColorCount(mode, progressTier));
 
-    const levelName = this.level ? this.level.name : (mode === 'tutorial' ? 'Tutorial' : mode === 'infinite' ? 'Infinito' : null);
-    PedagogyTracker.startSession(mode, levelId || null, levelName);
+    const levelName = this.level ? this.level.name : (mode === 'tutorial' ? 'Tutorial' : mode === 'infinite' ? 'Infinito' : mode === 'discovery' ? 'Descoberta' : null);
+    if (mode !== 'discovery') {
+      PedagogyTracker.startSession(mode, levelId || null, levelName);
+    } else {
+      PedagogyTracker.session = null;
+    }
 
     this.applyGameplayBackground();
     if (this._onResize) window.removeEventListener('resize', this._onResize);
@@ -1177,6 +1271,9 @@ const Gameplay = {
         h += '<div class="gal-particle" style="left:' + (Math.random() * 100) + '%;top:' + (Math.random() * 100) + '%;animation-delay:' + (Math.random() * 5) + 's"></div>';
       }
       layer.innerHTML = h;
+    } else if (this.mode === 'discovery') {
+      layer.classList.add('bg-tutorial');
+      layer.innerHTML = '';
     } else {
       layer.classList.add('bg-story');
       const bg = this.level && this.level.storyBg ? this.level.storyBg : 'linear-gradient(180deg,#ffd6e8,#a8e4ff)';
@@ -1220,10 +1317,10 @@ const Gameplay = {
 
   buildUI() {
     const modeEl = document.getElementById('modeBadge');
-    const badges = { tutorial: '🧸 TUTORIAL', story: '🗺️ HISTÓRIA', infinite: '♾️ INFINITO' };
-    const colors = { tutorial: '#FF6EB4', story: '#8B5E3C', infinite: '#9333ea' };
+    const badges = { tutorial: '🧸 TUTORIAL', story: '🗺️ HISTÓRIA', infinite: '♾️ INFINITO', discovery: '🔎 DESCOBERTA' };
+    const colors = { tutorial: '#FF6EB4', story: '#8B5E3C', infinite: '#9333ea', discovery: '#2d9cdb' };
     const diffLabel = this.difficultyConfig ? this.difficultyConfig.label : getCurrentDifficultyConfig().label;
-    modeEl.textContent = (badges[this.mode] || '') + (this.mode === 'tutorial' ? '' : ' · ' + diffLabel);
+    modeEl.textContent = (badges[this.mode] || '') + (this.mode === 'tutorial' || this.mode === 'discovery' ? '' : ' · ' + diffLabel);
     modeEl.style.background = colors[this.mode] || '#888';
 
     document.getElementById('levelHud').style.display = this.mode === 'infinite' ? 'inline' : 'none';
@@ -1246,7 +1343,9 @@ const Gameplay = {
   buildAnswerBtns() {
     const container = document.getElementById('answerBtns');
     container.innerHTML = '';
-    const showCb = StorageManager.get().settings.colorblind;
+    const settings = StorageManager.get().settings;
+    const showCb = !!settings.colorblind;
+    const showShapes = showCb || !!settings.showShapes;
     const landscape = typeof window.matchMedia === 'function' &&
       window.matchMedia('(orientation: landscape) and (max-height: 520px)').matches;
 
@@ -1258,10 +1357,8 @@ const Gameplay = {
       btn.classList.add('answer-btn-image');
       btn.style.background = 'transparent';
       btn.innerHTML = '<img class="answer-btn-img" src="' + c.asset + '" alt="' + c.label + '">';
-      if (showCb) {
-        const sh = SHAPE_BY_COLOR[c.id];
-        const shapes = ['▲', '■', '★', '●', '➕', '✖'];
-        btn.innerHTML += '<span style="position:absolute;bottom:2px;font-size:0.65rem;color:#fff;text-shadow:0 0 2px #000;">' + shapes[sh] + '</span>';
+      if (showShapes) {
+        btn.innerHTML += '<span class="answer-shape-symbol">' + (SHAPE_SYMBOL_BY_COLOR[c.id] || '●') + '</span>';
       }
       btn.addEventListener('click', () => {
         AudioManager.playClick();
@@ -1302,7 +1399,7 @@ const Gameplay = {
   },
 
   updateScoreDisplay() {
-    document.getElementById('scoreDisplay').textContent = '⭐ ' + this.score;
+    document.getElementById('scoreDisplay').textContent = this.mode === 'discovery' ? '🔎 Explorar' : '⭐ ' + this.score;
   },
 
   scoreJump() {
@@ -1379,6 +1476,7 @@ const Gameplay = {
     }
 
     this.sequence = LevelManager.generateSequence(patternType, this.colors, seqLen, varietyOff);
+    this.currentPatternType = Array.isArray(patternType) ? patternType.join('/') : String(patternType || 'AB');
     this.blankIdx = Math.floor(seqLen * 0.45) + Math.floor(Math.random() * Math.max(1, Math.floor(seqLen * 0.35)));
     this.blankIdx = Math.min(this.blankIdx, seqLen - 1);
     this.answer = this.sequence[this.blankIdx];
@@ -1549,8 +1647,9 @@ const Gameplay = {
     const seq = this.sequence;
     const n = seq.length;
     const dyn = this.getDynamicSpeedFactor();
-    const showLabels = StorageManager.get().settings.showLabels;
-    const colorblind = StorageManager.get().settings.colorblind;
+    const settings = StorageManager.get().settings;
+    const showLabels = settings.showLabels;
+    const colorblind = settings.colorblind || settings.showShapes;
     const cw = this.logicalWidth || this.canvas.width;
     const ch = this.logicalHeight || this.canvas.height;
     const gap = Math.max(4, cw * 0.012);
@@ -1773,6 +1872,8 @@ const Gameplay = {
       this.scoreJump();
       this.floatPoints(pts, this.mult);
       this.updateHudInfinite();
+    } else if (this.mode === 'discovery') {
+      this.updateScoreDisplay();
     } else {
       this.score += 10 + bonusRainbow;
       this.updateScoreDisplay();
@@ -1814,20 +1915,22 @@ const Gameplay = {
     };
     requestAnimationFrame(fillLoop);
 
-    if (this.streak > 0 && this.streak % CONFIG.STREAK_CELEBRATE === 0) {
+    const comboMessages = { 3: 'Combo x3!', 5: 'Incrível!', 8: 'Sequência perfeita!' };
+    if (comboMessages[this.streak]) {
       VisualEffects.candyRain();
       const b = document.createElement('div');
       b.className = 'streak-banner';
-      b.textContent = 'Combo! ' + this.streak + ' acertos seguidos!';
+      b.textContent = comboMessages[this.streak];
       document.getElementById('gameplayScreen').appendChild(b);
       setTimeout(() => b.remove(), 2200);
-      this.showMascotMessage('Muito bem!', 'happy');
+      this.showComboFloat(comboMessages[this.streak]);
+      this.showMascotMessage(comboMessages[this.streak], 'happy');
     }
 
     if (this.mode !== 'tutorial') {
       const phrases = ['Uau!', 'Muito bem!', 'Arrasou!'];
       SpeechManager.speak(phrases[Math.floor(Math.random() * phrases.length)]);
-      if (this.streak % CONFIG.STREAK_CELEBRATE !== 0) {
+      if (!comboMessages[this.streak]) {
         this.showMascotMessage(phrases[Math.floor(Math.random() * phrases.length)], 'happy');
       }
     }
@@ -1835,11 +1938,21 @@ const Gameplay = {
 
   onWrong(colorId) {
     AudioManager.playError();
+    this.wrongCount++;
+    PedagogyTracker.recordHint();
     if (this.mode === 'tutorial') {
-      SpeechManager.speak('Quase! Tente de novo!');
+      SpeechManager.speak('Boa tentativa! Vamos tentar novamente?');
+      this.showMascotMessage('Quase lá!', 'think');
     } else {
-      SpeechManager.speak('Ops! Continue tentando!');
-      this.showMascotMessage(this.wrongCount >= 2 ? 'Vamos tentar de novo?' : 'Olhe com calma!', 'think');
+      const hintMessages = [
+        'Vamos observar novamente.',
+        'Olhe para a bolinha que brilha.',
+        'Dica: começa com "' + (this.answer ? this.answer.label.charAt(0) : '') + '".',
+        'O padrão repete: ' + this.currentPatternType + '. A cor que falta é ' + (this.answer ? this.answer.label : '') + '.'
+      ];
+      const msg = hintMessages[Math.min(this.wrongCount, hintMessages.length) - 1];
+      SpeechManager.speak(this.wrongCount === 1 ? 'Boa tentativa!' : 'Vamos tentar novamente?');
+      this.showMascotMessage(msg, 'think');
     }
 
     this.recentCorrectTimes = [];
@@ -1858,7 +1971,6 @@ const Gameplay = {
     this.updateHudInfinite();
     document.getElementById('comboHeart').classList.add('hidden');
 
-    this.wrongCount++;
     if (this.mode !== 'tutorial') this.mistakesThisLevel++;
 
     const wrongBtn = document.querySelector('.answer-btn[data-color-id="' + colorId + '"]');
@@ -1876,7 +1988,9 @@ const Gameplay = {
       }
     }
     if (this.wrongCount >= 3) {
-      const name = this.answer.label;
+      const name = this.wrongCount >= 4
+        ? 'Padrão ' + this.currentPatternType + ': ' + this.answer.label
+        : 'Começa com ' + this.answer.label.charAt(0) + '!';
       const h = document.createElement('div');
       h.className = 'hint-big';
       h.textContent = name + '!';
@@ -2040,13 +2154,21 @@ const ProfessorPanel = {
           '<div><span>Status</span><strong>' + status + '</strong></div>' +
           '<div><span>Primeira tentativa</span><strong>' + (latest.firstTryCorrect || 0) + '/' + (latest.totalRounds || 0) + '</strong></div>' +
           '<div><span>Acertos totais</span><strong>' + (latest.correctRounds || 0) + '/' + (latest.totalRounds || 0) + '</strong></div>' +
-          '<div><span>Tempo médio</span><strong>' + formatSeconds(latest.avgResponseTime || 0) + '</strong></div>';
+          '<div><span>Tempo médio</span><strong>' + formatSeconds(latest.avgResponseTime || 0) + '</strong></div>' +
+          '<div><span>Dicas usadas</span><strong>' + (latest.hintCount || 0) + '</strong></div>';
       } else {
         summaryEl.innerHTML = '<div><span>Sem sessões registradas</span><strong>—</strong></div>';
       }
     }
     if (recEl) {
       recEl.textContent = latest ? (latest.recommendation || 'Observar mais uma sessão para recomendação automática.') : 'Sem recomendação ainda.';
+    }
+    const profileEl = document.getElementById('pedagogicalProfile');
+    if (profileEl) {
+      const profile = latest ? (latest.profile || buildPedagogicalProfile(latest)) : buildPedagogicalProfile(null);
+      profileEl.innerHTML = profile.map(p =>
+        '<div class="ped-profile-row"><span>' + p.label + '</span><strong>' + p.stars + '</strong></div>'
+      ).join('');
     }
     if (latest && descEl) {
       descEl.textContent = (latest.passed ? 'Apto para próxima fase' : 'Recomenda-se repetir') +
@@ -2153,16 +2275,34 @@ const ProfessorPanel = {
     tl.textContent = 'Mostrar nomes: ' + (cfg.showLabels ? 'ON' : 'OFF');
     tl.classList.toggle('on', !!cfg.showLabels);
 
+    const ts = document.getElementById('toggleShapes');
+    if (ts) {
+      ts.textContent = 'Símbolos: ' + (cfg.showShapes ? 'ON' : 'OFF');
+      ts.classList.toggle('on', !!cfg.showShapes);
+    }
+
     const td = document.getElementById('toggleDalton');
     td.textContent = 'Modo daltônico: ' + (cfg.colorblind ? 'ON' : 'OFF');
     td.classList.toggle('on', !!cfg.colorblind);
+
+    const tn = document.getElementById('toggleNarration');
+    if (tn) {
+      tn.textContent = 'Narração: ' + (cfg.narration ? 'ON' : 'OFF');
+      tn.classList.toggle('on', !!cfg.narration);
+    }
+
+    const tc = document.getElementById('toggleCalm');
+    if (tc) {
+      tc.textContent = 'Modo calmo: ' + (cfg.calmMode ? 'ON' : 'OFF');
+      tc.classList.toggle('on', !!cfg.calmMode);
+    }
 
     const ta = document.getElementById('toggleAccess');
     if (ta) {
       ta.textContent = 'Modo Acessibilidade: ' + (cfg.accessibility ? 'ON' : 'OFF');
       ta.classList.toggle('on', !!cfg.accessibility);
-      document.body.classList.toggle('high-contrast-mode', !!cfg.accessibility);
     }
+    applyBodySettingsClasses();
   },
 
   setSpeed(speed) {
@@ -2177,13 +2317,42 @@ const ProfessorPanel = {
     this.refresh();
     if (Gameplay.running) Gameplay.drawScene();
   },
+  toggleShapes() {
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.showShapes = !d.settings.showShapes;
+    });
+    this.refresh();
+    if (Gameplay.running) {
+      Gameplay.buildAnswerBtns();
+      Gameplay.drawScene();
+    }
+  },
   toggleDaltonism() {
     StorageManager.set(d => {
       if (!d.settings) d.settings = {};
       d.settings.colorblind = !d.settings.colorblind;
     });
     this.refresh();
-    if (Gameplay.running) Gameplay.buildAnswerBtns();
+    if (Gameplay.running) {
+      Gameplay.buildAnswerBtns();
+      Gameplay.drawScene();
+    }
+  },
+  toggleNarration() {
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.narration = !d.settings.narration;
+    });
+    this.refresh();
+    if (StorageManager.get().settings.narration) SpeechManager.speak('Narração ativada.');
+  },
+  toggleCalmMode() {
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.calmMode = !d.settings.calmMode;
+    });
+    this.refresh();
   },
   toggleAccessibility() {
     StorageManager.set(d => {
@@ -2191,6 +2360,41 @@ const ProfessorPanel = {
       d.settings.accessibility = !d.settings.accessibility;
     });
     this.refresh();
+  },
+  downloadReport() {
+    const latest = (StorageManager.get().sessions || [])[0];
+    if (!latest) {
+      alert('Ainda não há sessão registrada para baixar.');
+      return;
+    }
+    const report = {
+      data: latest.date,
+      modo: latest.mode,
+      fase: latest.levelName || latest.levelId || '—',
+      dificuldade: latest.difficultyLabel,
+      nota: latest.nota,
+      notaMinima: latest.minGradeToPass,
+      status: latest.passed ? 'Apto para próxima fase' : 'Recomenda-se repetir',
+      acertosPrimeiraTentativa: latest.firstTryCorrect,
+      acertosTotais: latest.correctRounds,
+      rodadas: latest.totalRounds,
+      tentativasTotais: latest.totalAttempts,
+      tentativasComApoio: latest.wrongAttempts,
+      dicasUsadas: latest.hintCount || 0,
+      tempoMedioMs: latest.avgResponseTime,
+      recomendacaoPedagogica: latest.recommendation,
+      perfilPedagogico: latest.profile || buildPedagogicalProfile(latest),
+      medalhas: latest.badges || buildSessionBadges(latest)
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'session-report.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
   drawEvolutionChart() {
     const canvas = document.getElementById('profEvolutionCanvas');
@@ -2272,6 +2476,7 @@ const GameEngine = {
   init() {
     AudioManager.init();
     VisualEffects.init();
+    applyBodySettingsClasses();
     this.populateMenuMascots();
     this.setupGear();
     this.injectShakeStyle();
@@ -2532,6 +2737,14 @@ const GameEngine = {
 
     let scoreBlock = renderScoreBlock('');
     const resultClass = passed ? 'result-card passed' : 'result-card retry';
+    const badges = result.badges || buildSessionBadges(result);
+    const profile = result.profile || buildPedagogicalProfile(result);
+    const badgesHTML = badges.length
+      ? '<div class="result-badges">' + badges.map(b => '<span>' + b + '</span>').join('') + '</div>'
+      : '';
+    const profileHTML = '<div class="result-profile">' + profile.map(p =>
+      '<div><span>' + p.label + '</span><strong>' + p.stars + '</strong></div>'
+    ).join('') + '</div>';
     scoreBlock =
       '<div class="' + resultClass + '">' +
         '<div class="result-grade-row"><span>Nota Final</span><strong>' + nota + '/100</strong></div>' +
@@ -2543,6 +2756,8 @@ const GameEngine = {
           '<div><span>Tempo médio</span><strong>' + formatSeconds(avgTime) + '</strong></div>' +
           '<div><span>Dificuldade</span><strong>' + difficultyLabel + ' · min. ' + minGrade + '</strong></div>' +
         '</div>' +
+        badgesHTML +
+        profileHTML +
         '<div class="result-note"><strong>Observação:</strong> ' + recommendation + '</div>' +
       '</div>';
 

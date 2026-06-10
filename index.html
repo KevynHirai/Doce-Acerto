@@ -88,6 +88,8 @@
       <div class="menu-buttons">
         <button type="button" class="btn-glossy btn-pink" id="btnTutorial" aria-label="Tutorial"
           onclick="GameEngine.startMode('tutorial')">🧸 TUTORIAL</button>
+        <button type="button" class="btn-glossy btn-purple" id="btnDiscovery" aria-label="Modo Descoberta"
+          onclick="GameEngine.startMode('discovery')">🔎 DESCOBERTA</button>
         <div id="wrapStory" class="menu-locked">
           <button type="button" class="btn-glossy btn-choco" id="btnStory" aria-label="Modo História"
             onclick="GameEngine.showMap()">🗺️ HISTÓRIA</button>
@@ -201,6 +203,13 @@
         </div>
 
         <div class="prof-section">
+          <h3>Perfil pedagógico</h3>
+          <div class="ped-profile" id="pedagogicalProfile"></div>
+          <button type="button" class="toggle-btn" id="btnDownloadReport" onclick="ProfessorPanel.downloadReport()">Baixar
+            relatório</button>
+        </div>
+
+        <div class="prof-section">
           <h3>📈 Evolução dos acertos (últimas 5 partidas)</h3>
           <div class="prof-chart-wrap"><canvas id="profEvolutionCanvas" width="480" height="120"></canvas></div>
           <div class="bar-chart" id="sessionAccuracyChart" style="margin-top:10px;"></div>
@@ -231,12 +240,12 @@
         <div class="prof-section">
           <h3>⚔️ Nível de Dificuldade</h3>
           <div class="speed-btns">
-            <button type="button" class="speed-btn" data-speed="slow"
-              onclick="ProfessorPanel.setSpeed('slow')">Fácil</button>
+            <button type="button" class="speed-btn" data-speed="easy"
+              onclick="ProfessorPanel.setSpeed('easy')">Fácil</button>
             <button type="button" class="speed-btn active" data-speed="normal"
               onclick="ProfessorPanel.setSpeed('normal')">Normal</button>
-            <button type="button" class="speed-btn" data-speed="fast"
-              onclick="ProfessorPanel.setSpeed('fast')">Difícil</button>
+            <button type="button" class="speed-btn" data-speed="hard"
+              onclick="ProfessorPanel.setSpeed('hard')">Difícil</button>
           </div>
         </div>
 
@@ -249,9 +258,27 @@
         </div>
 
         <div class="prof-section">
+          <h3>🔣 Símbolos nas bolinhas</h3>
+          <button type="button" class="toggle-btn" id="toggleShapes" onclick="ProfessorPanel.toggleShapes()">Símbolos:
+            OFF</button>
+        </div>
+
+        <div class="prof-section">
           <h3>👁️ Modo daltônico (formas nas bolinhas)</h3>
           <button type="button" class="toggle-btn" id="toggleDalton" onclick="ProfessorPanel.toggleDaltonism()">Modo
             daltônico: OFF</button>
+        </div>
+
+        <div class="prof-section">
+          <h3>🔊 Narração por voz</h3>
+          <button type="button" class="toggle-btn" id="toggleNarration" onclick="ProfessorPanel.toggleNarration()">Narração:
+            OFF</button>
+        </div>
+
+        <div class="prof-section">
+          <h3>🌙 Modo calmo</h3>
+          <button type="button" class="toggle-btn" id="toggleCalm" onclick="ProfessorPanel.toggleCalmMode()">Modo calmo:
+            OFF</button>
         </div>
 
         <div class="prof-section">
