@@ -4,11 +4,11 @@
 
 const DEFAULT_CONFIG = {
   levels: [
-    { id: 1, name: "Tutorial", emoji: "🧸" },
-    { id: 2, name: "Fase 2", emoji: "🍬" },
-    { id: 3, name: "Fase 3", emoji: "🍭" },
-    { id: 4, name: "Fase 4", emoji: "🍩" },
-    { id: 5, name: "Fase 5", emoji: "🍰" }
+    { id: 1, name: "🍭 Colina dos Pirulitos", pattern: "AB", colors: 2, seqs: 6, seqLenBase: 5, emoji: "🍭" },
+    { id: 2, name: "🍰 Planície do Bolo", pattern: "AB", colors: 3, seqs: 7, seqLenBase: 6, emoji: "🍰" },
+    { id: 3, name: "🍫 Montanha de Chocolate", pattern: "ABC", colors: 3, seqs: 8, seqLenBase: 7, emoji: "🍫" },
+    { id: 4, name: "🍦 Vale do Sorvete", pattern: "AABB|ABC", colors: 4, seqs: 10, seqLenBase: 8, emoji: "🍦" },
+    { id: 5, name: "🏰 Castelo de Açúcar", pattern: "mixed", patterns: ["AB", "ABC", "AABB"], colors: 4, maxColors: 5, seqs: 12, seqLenBase: 9, emoji: "🏰" }
   ]
 };
 
@@ -21,14 +21,66 @@ const CONFIG = {
   HINT_NAME_MS: 1500,
   ROUND_FADE_MS: 220,
   SLIDE_IN_MS: 520,
-  STREAK_CELEBRATE: 5,
+  STREAK_CELEBRATE: 3,
   MAP_LEVELS: 5,
   /** Raio mínimo das bolinhas no canvas (px) — alvo para toque infantil */
   MIN_BALL_RADIUS: 28,
   MAX_BALL_RADIUS: 46,
   MAX_PARTICULAS_ATIVAS: 120,
   COMBO_RAPIDO_MS: 2200,
-  COMBO_RAPIDO_MIN: 3
+  COMBO_RAPIDO_MIN: 3,
+  STICKER_REWARD_BY_LEVEL: {
+    1: 'st_morango',
+    2: 'st_doce',
+    3: 'st_limao',
+    4: 'st_maca',
+    5: 'st_castelo'
+  }
+};
+
+const DIFFICULTY_CONFIG = {
+  slow: {
+    label: "Fácil",
+    speedMultiplier: 0.75,
+    minGradeToPass: 60,
+    maxColorsBonus: 0,
+    hintsAfterErrors: 1,
+    sequenceExtra: 0,
+    timeWeight: 10,
+    accuracyWeight: 70,
+    attemptsWeight: 20,
+    targetResponseMs: 5500,
+    teacherText: "Sequências mais curtas, dica rápida e aprovação a partir de 60.",
+    childPassText: "Bom trabalho! Vamos seguir com calma!"
+  },
+  normal: {
+    label: "Normal",
+    speedMultiplier: 1,
+    minGradeToPass: 70,
+    maxColorsBonus: 1,
+    hintsAfterErrors: 2,
+    sequenceExtra: 1,
+    timeWeight: 15,
+    accuracyWeight: 65,
+    attemptsWeight: 20,
+    targetResponseMs: 4500,
+    teacherText: "Mais cores, sequência um pouco maior e aprovação a partir de 70.",
+    childPassText: "Muito bom! Você está pronto para continuar!"
+  },
+  fast: {
+    label: "Difícil",
+    speedMultiplier: 1.25,
+    minGradeToPass: 80,
+    maxColorsBonus: 2,
+    hintsAfterErrors: 2,
+    sequenceExtra: 2,
+    timeWeight: 20,
+    accuracyWeight: 60,
+    attemptsWeight: 20,
+    targetResponseMs: 3500,
+    teacherText: "Mais velocidade, mais cores, sequência maior e aprovação a partir de 80.",
+    childPassText: "Excelente! Você dominou essa fase!"
+  }
 };
 
 // ===== CORES — cada uma com fruta ou doce próprio (emoji visível em todo dispositivo) =====
@@ -160,6 +212,14 @@ const StorageManager = {
     for (let k in def) {
       if (data[k] === undefined) data[k] = def[k];
     }
+    data.settings = Object.assign({}, def.settings, data.settings || {});
+    if (!DIFFICULTY_CONFIG[data.settings.speed]) data.settings.speed = def.settings.speed;
+    for (const c of COLORS) {
+      if (data.colorErrors[c.id] === undefined) data.colorErrors[c.id] = 0;
+      if (data.colorTotal[c.id] === undefined) data.colorTotal[c.id] = 0;
+      if (data.responseTimeSum[c.id] === undefined) data.responseTimeSum[c.id] = 0;
+      if (data.responseTimeCount[c.id] === undefined) data.responseTimeCount[c.id] = 0;
+    }
     return data;
   },
   save(data) { try { localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(data)); } catch (e) {} },
@@ -171,6 +231,7 @@ const StorageManager = {
       levelAttempts: {},
       sessions: [],
       highScore: 0,
+      rewardStickers: [],
       settings: { speed: 'normal', showLabels: false, colorblind: false, accessibility: false },
       colorErrors: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
       colorTotal: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
@@ -183,6 +244,69 @@ const StorageManager = {
   get() { return this.load(); },
   set(fn) { const d = this.load(); fn(d); this.save(d); }
 };
+
+function normalizeDifficultyKey(key) {
+  return DIFFICULTY_CONFIG[key] ? key : 'normal';
+}
+
+function getDifficultyConfig(key) {
+  return DIFFICULTY_CONFIG[normalizeDifficultyKey(key)];
+}
+
+function getCurrentDifficultyKey() {
+  const data = StorageManager.get();
+  return normalizeDifficultyKey(data.settings && data.settings.speed);
+}
+
+function getCurrentDifficultyConfig() {
+  return getDifficultyConfig(getCurrentDifficultyKey());
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function calculateTimeScore(avgResponseTime, difficultyKey) {
+  const diff = getDifficultyConfig(difficultyKey);
+  if (!Number.isFinite(avgResponseTime) || avgResponseTime <= 0) return 0;
+  const target = diff.targetResponseMs || 4500;
+  if (avgResponseTime <= target) return 1;
+  if (avgResponseTime >= target * 2) return 0;
+  return clamp01(1 - ((avgResponseTime - target) / target));
+}
+
+function formatSeconds(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0.0s';
+  return (ms / 1000).toFixed(1) + 's';
+}
+
+function buildPedagogicalRecommendation(metrics) {
+  const accuracy = Number.isFinite(metrics.accuracyPct) ? metrics.accuracyPct : 0;
+  const avgTime = Number.isFinite(metrics.avgResponseTime) ? metrics.avgResponseTime : 0;
+  const firstTryRate = Number.isFinite(metrics.firstTryRate) ? metrics.firstTryRate : 0;
+
+  if (accuracy < 60) return "Reforçar reconhecimento das cores e padrões simples.";
+  if (avgTime > 5000) return "A criança acerta, mas precisa de mais tempo para reconhecer o padrão.";
+  if (firstTryRate < 70) return "Praticar antes de avançar para padrões mais longos.";
+  return "Desempenho adequado para avançar.";
+}
+
+function getChildResultMessage(nota, minGradeToPass, passed) {
+  if (!passed) return "Você foi bem, mas vamos treinar mais um pouquinho antes da próxima fase!";
+  if (nota >= 90) return "Excelente! Você dominou essa fase!";
+  if (nota >= 75) return "Muito bom! Você está pronto para continuar!";
+  if (nota >= 60) return "Bom trabalho! Continue praticando para ficar ainda melhor!";
+  return "Vamos tentar de novo com calma!";
+}
+
+function getStarsFromGrade(nota, passed) {
+  if (!Number.isFinite(nota)) return 0;
+  if (!passed) return nota >= 50 ? 1 : 0;
+  if (nota >= 90) return 3;
+  if (nota >= 70) return 2;
+  return 1;
+}
 
 // ===== Máquina de estados (telas) =====
 const GameState = { MENU: 'MENU', MAP: 'MAP', GAMEPLAY: 'GAMEPLAY', RESULT: 'RESULT' };
@@ -551,21 +675,88 @@ const VisualEffects = {
 const PedagogyTracker = {
   session: null,
   startSession(mode, levelId, levelName) {
+    const difficultyKey = getCurrentDifficultyKey();
+    const difficulty = getDifficultyConfig(difficultyKey);
     this.session = {
       mode, levelId: levelId || null, levelName: levelName || null,
-      total: 0, firstTryCorrect: 0, totalAttempts: 0,
-      colorErrors: { red: 0, blue: 0, yellow: 0, green: 0 },
-      colorTotal: { red: 0, blue: 0, yellow: 0, green: 0 },
-      complexBonus: 0, startTime: Date.now()
+      difficulty: difficultyKey,
+      difficultyLabel: difficulty.label,
+      minGradeToPass: difficulty.minGradeToPass,
+      totalRounds: 0,
+      correctRounds: 0,
+      firstTryCorrect: 0,
+      wrongAttempts: 0,
+      totalAttempts: 0,
+      responseTimes: [],
+      roundsDetail: [],
+      colorErrors: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
+      colorTotal: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
+      currentRound: null,
+      complexBonus: 0,
+      startTime: Date.now()
     };
   },
-  recordAttempt(colorId, isCorrect, isFirstTry) {
+  startRound(expectedColorId) {
     if (!this.session) return;
-    this.session.total++;
-    this.session.totalAttempts++;
-    this.session.colorTotal[colorId] = (this.session.colorTotal[colorId] || 0) + 1;
-    if (!isCorrect) this.session.colorErrors[colorId] = (this.session.colorErrors[colorId] || 0) + 1;
-    else if (isFirstTry) this.session.firstTryCorrect++;
+    const s = this.session;
+    s.totalRounds++;
+    s.currentRound = {
+      expectedColorId,
+      attempts: 0,
+      wrongAttempts: 0,
+      selections: [],
+      firstTry: true,
+      success: false,
+      responseTimeMs: 0,
+      startedAt: Date.now()
+    };
+  },
+  recordAttempt(selectedColorId, isCorrect, isFirstTry) {
+    if (!this.session) return;
+    const s = this.session;
+    if (!s.currentRound) this.startRound(null);
+    const round = s.currentRound;
+    const expectedId = round.expectedColorId || selectedColorId;
+
+    s.totalAttempts++;
+    round.attempts++;
+    round.selections.push(selectedColorId);
+    s.colorTotal[expectedId] = (s.colorTotal[expectedId] || 0) + 1;
+
+    if (!isCorrect) {
+      s.wrongAttempts++;
+      round.wrongAttempts++;
+      round.firstTry = false;
+      s.colorErrors[expectedId] = (s.colorErrors[expectedId] || 0) + 1;
+      return;
+    }
+
+    if (isFirstTry && round.attempts === 1) {
+      s.firstTryCorrect++;
+    }
+  },
+  finishRound(success, responseTimeMs) {
+    if (!this.session || !this.session.currentRound) return;
+    const s = this.session;
+    const round = s.currentRound;
+    const cleanTime = Number.isFinite(responseTimeMs) && responseTimeMs >= 0 ? responseTimeMs : Date.now() - round.startedAt;
+
+    round.success = !!success;
+    round.responseTimeMs = Math.max(0, cleanTime);
+    if (round.success) {
+      s.correctRounds++;
+      s.responseTimes.push(round.responseTimeMs);
+    }
+    s.roundsDetail.push({
+      expectedColorId: round.expectedColorId,
+      attempts: round.attempts,
+      wrongAttempts: round.wrongAttempts,
+      firstTry: round.success && round.attempts === 1,
+      success: round.success,
+      responseTimeMs: round.responseTimeMs,
+      selections: round.selections.slice(0, 6)
+    });
+    s.currentRound = null;
   },
   recordResponseTime(colorId, ms) {
     if (!this.session || ms < 0 || ms > 120000) return;
@@ -578,47 +769,82 @@ const PedagogyTracker = {
   endSession() {
     if (!this.session) return null;
     const s = this.session;
-    const total = Math.max(1, s.total);
-    let nota = (s.firstTryCorrect / total) * 60;
-    nota += Math.max(0, 1 - (s.totalAttempts / Math.max(1, s.firstTryCorrect * 2 + 1))) * 25;
-    nota += s.complexBonus * 15;
-    nota = Math.min(100, Math.max(0, Math.round(nota)));
+    if (s.currentRound && s.currentRound.attempts > 0) {
+      this.finishRound(false, Date.now() - s.currentRound.startedAt);
+    }
+
+    const totalRounds = Math.max(0, s.totalRounds);
+    const divisor = Math.max(1, totalRounds);
+    const avgResponseTime = s.responseTimes.length
+      ? s.responseTimes.reduce((sum, ms) => sum + ms, 0) / s.responseTimes.length
+      : 0;
+    const firstTryRate = s.firstTryCorrect / divisor;
+    const finalAccuracyRate = s.correctRounds / divisor;
+    const attemptEfficiency = clamp01(1 - ((s.totalAttempts - totalRounds) / divisor));
+    const avgTimeScore = calculateTimeScore(avgResponseTime, s.difficulty);
+
+    let nota =
+      firstTryRate * 60 +
+      finalAccuracyRate * 20 +
+      attemptEfficiency * 10 +
+      avgTimeScore * 10;
+    nota = Math.round(Math.max(0, Math.min(100, Number.isFinite(nota) ? nota : 0)));
+
+    const accuracyPct = Math.round(finalAccuracyRate * 100);
+    const firstTryPct = Math.round(firstTryRate * 100);
+    const passed = s.mode === 'story' ? nota >= s.minGradeToPass : true;
+    const recommendation = buildPedagogicalRecommendation({
+      accuracyPct,
+      avgResponseTime,
+      firstTryRate: firstTryPct
+    });
 
     const sessionData = {
       date: new Date().toLocaleDateString('pt-BR'),
       mode: s.mode,
       levelId: s.levelId,
       levelName: s.levelName,
+      difficulty: s.difficulty,
+      difficultyLabel: s.difficultyLabel,
+      minGradeToPass: s.minGradeToPass,
+      passed,
       nota,
       duration: Math.round((Date.now() - s.startTime) / 1000),
-      accuracyPct: Math.round((s.firstTryCorrect / total) * 100)
+      accuracyPct,
+      firstTryPct,
+      totalRounds,
+      correctRounds: s.correctRounds,
+      firstTryCorrect: s.firstTryCorrect,
+      wrongAttempts: s.wrongAttempts,
+      totalAttempts: s.totalAttempts,
+      avgResponseTime: Math.round(avgResponseTime),
+      recommendation,
+      roundsDetail: s.roundsDetail
     };
 
-    StorageManager.set(d => {
-      d.lastNote = nota;
-      d.sessions.unshift(sessionData);
-      if (d.sessions.length > 10) d.sessions = d.sessions.slice(0, 10);
-      for (const c of Object.keys(s.colorErrors)) {
-        d.colorErrors[c] = (d.colorErrors[c] || 0) + s.colorErrors[c];
-        d.colorTotal[c] = (d.colorTotal[c] || 0) + (s.colorTotal[c] || 0);
-      }
-    });
+    if (s.mode !== 'tutorial') {
+      StorageManager.set(d => {
+        d.lastNote = nota;
+        d.sessions.unshift(sessionData);
+        if (d.sessions.length > 10) d.sessions = d.sessions.slice(0, 10);
+        for (const c of Object.keys(s.colorErrors)) {
+          d.colorErrors[c] = (d.colorErrors[c] || 0) + s.colorErrors[c];
+          d.colorTotal[c] = (d.colorTotal[c] || 0) + (s.colorTotal[c] || 0);
+        }
+      });
+    }
 
     // Envio de postMessage com pontuação final, conforme o manual de padronização
-    const diffMap = { slow: 'Fácil', normal: 'Médio', fast: 'Difícil' };
-    const currentSpeed = StorageManager.get().settings.speed || 'normal';
-    const diffStr = diffMap[currentSpeed] || 'Médio';
-
-    if (window.parent && this.session.mode !== 'tutorial') {
+    if (window.parent && s.mode !== 'tutorial') {
       window.parent.postMessage({
         type: 'C4A_GAME_SCORE',
         score: nota,
-        difficulty: diffStr
+        difficulty: s.difficultyLabel
       }, '*');
     }
 
     this.session = null;
-    return nota;
+    return sessionData;
   }
 };
 
@@ -629,11 +855,27 @@ const LevelManager = {
    */
   levels: [],
 
-  /** Comprimento da sequência no modo história: sobe levemente com a fase e ao longo da fase */
-  getStorySeqLen(level, seqsCompleted) {
+  /** Comprimento da sequência no modo história: sobe levemente com a fase, rodada e dificuldade. */
+  getStorySeqLen(level, seqsCompleted, difficultyKey) {
+    const diff = getDifficultyConfig(difficultyKey);
     const base = level.seqLenBase != null ? level.seqLenBase : (5 + level.id);
     const grow = Math.min(5, Math.floor(seqsCompleted / 2) + Math.floor(level.id / 3));
-    return Math.min(20, base + grow);
+    return Math.min(22, base + grow + (diff.sequenceExtra || 0));
+  },
+
+  patternOptions(patternType) {
+    if (Array.isArray(patternType) && patternType.length) return patternType;
+    if (typeof patternType !== 'string') return ['AB'];
+    if (patternType === 'mixed') return ['AB', 'ABC', 'AABB'];
+    if (patternType.indexOf('|') >= 0) return patternType.split('|').map(p => p.trim()).filter(Boolean);
+    return [patternType || 'AB'];
+  },
+
+  patternColorCount(patternType) {
+    return this.patternOptions(patternType).reduce((max, pat) => {
+      const unique = new Set((pat.match(/[A-Z]/g) || ['A', 'B']));
+      return Math.max(max, unique.size);
+    }, 2);
   },
 
   /**
@@ -641,23 +883,20 @@ const LevelManager = {
    */
   generateSequence(patternType, availableColors, seqLen, varietyOffset) {
     varietyOffset = varietyOffset || 0;
-    const numC = availableColors.length;
-    let base = [];
-    
-    if (patternType === 'AABB') {
-      for (let i = 0; i < numC; i++) { base.push(i); base.push(i); }
-      if (varietyOffset % 2 === 1) {
-        base = base.slice(2).concat(base.slice(0, 2));
-      }
-    } else {
-      for (let i = 0; i < numC; i++) { base.push(i); }
-      if (varietyOffset > 0) {
-        const rot = varietyOffset % base.length;
-        base = base.slice(rot).concat(base.slice(0, rot));
-      }
-    }
+    const colors = availableColors && availableColors.length ? availableColors : COLORS.slice(0, 2);
+    const options = this.patternOptions(patternType);
+    const selectedPattern = options[varietyOffset % options.length] || 'AB';
+    const tokens = selectedPattern.match(/[A-Z]/g) || ['A', 'B'];
+    const uniqueTokens = Array.from(new Set(tokens));
+    const colorOffset = Math.floor(varietyOffset / Math.max(1, options.length)) % colors.length;
+    const tokenColor = {};
+
+    uniqueTokens.forEach((token, i) => {
+      tokenColor[token] = colors[(colorOffset + i) % colors.length];
+    });
+
     const seq = [];
-    for (let i = 0; i < seqLen; i++) seq.push(availableColors[base[i % base.length]]);
+    for (let i = 0; i < seqLen; i++) seq.push(tokenColor[tokens[i % tokens.length]]);
     return seq;
   },
 
@@ -774,6 +1013,8 @@ const Gameplay = {
   score: 0, seqsCompleted: 0, totalSeqs: 8,
   wrongCount: 0, firstTry: true, running: false, animFrame: null,
   speed: 1,
+  difficultyKey: 'normal',
+  difficultyConfig: DIFFICULTY_CONFIG.normal,
   hintActive: false, hintTimeout: null,
   fillAnim: null,
   bezier: null,
@@ -806,6 +1047,17 @@ const Gameplay = {
     setTimeout(() => el.remove(), 1200);
   },
 
+  showMascotMessage(text, mood) {
+    const guide = document.getElementById('mascotGuide');
+    const speech = document.getElementById('mascotSpeech');
+    if (!guide || !speech) return;
+    speech.textContent = text;
+    guide.classList.remove('hidden', 'mascot-happy', 'mascot-think');
+    guide.classList.add(mood === 'think' ? 'mascot-think' : 'mascot-happy');
+    guide.classList.add('mascot-pop');
+    setTimeout(() => guide.classList.remove('mascot-pop'), 450);
+  },
+
   vibrate(ms) {
     try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
   },
@@ -818,6 +1070,23 @@ const Gameplay = {
     if (!c) return false;
     const r = c.getBoundingClientRect();
     return r.width > 8 && r.height > 8 && r.bottom > 0 && r.right > 0;
+  },
+
+  getTargetColorCount(mode, progressTier) {
+    if (mode === 'tutorial') return 2;
+    const diff = this.difficultyConfig || getCurrentDifficultyConfig();
+
+    if (mode === 'story' && this.level) {
+      const pattern = this.level.patterns || this.level.pattern || 'AB';
+      const patternColors = LevelManager.patternColorCount(pattern);
+      const base = Math.max(patternColors, this.level.colors || patternColors);
+      const maxColors = Math.min(COLORS.length, this.level.maxColors || COLORS.length);
+      return Math.max(patternColors, Math.min(maxColors, base + (diff.maxColorsBonus || 0)));
+    }
+
+    const tier = Math.max(1, progressTier || 1);
+    const base = tier <= 2 ? 2 : tier <= 4 ? 3 : 4;
+    return Math.min(COLORS.length, base + (diff.maxColorsBonus || 0));
   },
 
   init(mode, levelId) {
@@ -843,34 +1112,12 @@ const Gameplay = {
 
     const data = StorageManager.get();
     const cfg = data.settings || { speed: 'normal' };
-    const diff = cfg.speed || 'normal';
-    const speedMap = { slow: 0.65, normal: 1, fast: 1.55 };
-    this.speed = speedMap[diff] || 1;
+    const diff = normalizeDifficultyKey(cfg.speed);
+    this.difficultyKey = diff;
+    this.difficultyConfig = getDifficultyConfig(diff);
+    this.speed = this.difficultyConfig.speedMultiplier || 1;
     if (mode === 'tutorial') this.speed *= 0.55;
     this.baseSpeedMul = this.speed;
-
-    let progressTier = 1;
-    if (mode === 'story' && levelId) progressTier = levelId;
-    else if (mode === 'infinite') progressTier = this.infiniteTier;
-
-    let targetColors = 3;
-    if (mode === 'tutorial') {
-      targetColors = 2;
-    } else {
-      if (diff === 'slow') {
-        targetColors = progressTier <= 2 ? 2 : 3;
-      } else if (diff === 'normal') {
-        targetColors = progressTier <= 3 ? 3 : 4;
-      } else if (diff === 'fast') {
-        targetColors = progressTier <= 4 ? 5 : 6;
-      }
-    }
-
-    if (mode === 'infinite') {
-      this.getInfinitePatternAndColors(); 
-    }
-    
-    this.colors = COLORS.slice(0, targetColors);
 
     if (mode === 'story' && levelId) {
       this.level = LevelManager.getLevel(levelId);
@@ -882,6 +1129,11 @@ const Gameplay = {
       this.level = null;
       this.totalSeqs = Infinity;
     }
+
+    let progressTier = 1;
+    if (mode === 'story' && levelId) progressTier = levelId;
+    else if (mode === 'infinite') progressTier = this.infiniteTier;
+    this.colors = COLORS.slice(0, this.getTargetColorCount(mode, progressTier));
 
     const levelName = this.level ? this.level.name : (mode === 'tutorial' ? 'Tutorial' : mode === 'infinite' ? 'Infinito' : null);
     PedagogyTracker.startSession(mode, levelId || null, levelName);
@@ -970,7 +1222,8 @@ const Gameplay = {
     const modeEl = document.getElementById('modeBadge');
     const badges = { tutorial: '🧸 TUTORIAL', story: '🗺️ HISTÓRIA', infinite: '♾️ INFINITO' };
     const colors = { tutorial: '#FF6EB4', story: '#8B5E3C', infinite: '#9333ea' };
-    modeEl.textContent = badges[this.mode] || '';
+    const diffLabel = this.difficultyConfig ? this.difficultyConfig.label : getCurrentDifficultyConfig().label;
+    modeEl.textContent = (badges[this.mode] || '') + (this.mode === 'tutorial' ? '' : ' · ' + diffLabel);
     modeEl.style.background = colors[this.mode] || '#888';
 
     document.getElementById('levelHud').style.display = this.mode === 'infinite' ? 'inline' : 'none';
@@ -1086,13 +1339,7 @@ const Gameplay = {
     const i = (this.infiniteTier - 1) % cycle.length;
     const c = cycle[i];
     
-    const diff = StorageManager.get().settings.speed || 'normal';
-    let targetColors = 3;
-    if (diff === 'slow') targetColors = this.infiniteTier <= 2 ? 2 : 3;
-    else if (diff === 'normal') targetColors = this.infiniteTier <= 3 ? 3 : 4;
-    else if (diff === 'fast') targetColors = this.infiniteTier <= 4 ? 5 : 6;
-
-    this.colors = COLORS.slice(0, targetColors);
+    this.colors = COLORS.slice(0, this.getTargetColorCount('infinite', this.infiniteTier));
     this.infinitePattern = c.pat;
     this.buildAnswerBtns();
   },
@@ -1122,8 +1369,8 @@ const Gameplay = {
       seqLen = 6;
       this.colors = COLORS.slice(0, 2);
     } else if (this.level) {
-      patternType = this.level.pattern;
-      seqLen = LevelManager.getStorySeqLen(this.level, this.seqsCompleted);
+      patternType = this.level.patterns || this.level.pattern;
+      seqLen = LevelManager.getStorySeqLen(this.level, this.seqsCompleted, this.difficultyKey);
       varietyOff = this.seqsCompleted;
     } else if (this.mode === 'infinite') {
       patternType = this.infinitePattern;
@@ -1135,6 +1382,7 @@ const Gameplay = {
     this.blankIdx = Math.floor(seqLen * 0.45) + Math.floor(Math.random() * Math.max(1, Math.floor(seqLen * 0.35)));
     this.blankIdx = Math.min(this.blankIdx, seqLen - 1);
     this.answer = this.sequence[this.blankIdx];
+    PedagogyTracker.startRound(this.answer ? this.answer.id : null);
 
     this.specialBlank = null;
     if (this.mode !== 'tutorial') {
@@ -1146,6 +1394,11 @@ const Gameplay = {
     this.questionStartTime = Date.now();
     this.slideT = 0;
     AudioManager.playSwoosh();
+
+    if (this.mode !== 'tutorial' && (this.seqsCompleted === 0 || Math.random() < 0.35)) {
+      const prompts = ['Olhe com calma!', 'Você consegue!', 'Ache o padrão!', 'Quase lá!'];
+      this.showMascotMessage(prompts[Math.floor(Math.random() * prompts.length)], 'think');
+    }
 
     if (this.mode === 'tutorial' && TutorialManager.firstRoundStarted) {
       TutorialManager.onRoundStart();
@@ -1456,14 +1709,21 @@ const Gameplay = {
     const ms = Date.now() - this.questionStartTime;
     const correct = this.answer && colorId === this.answer.id;
     const wasFirstTry = this.firstTry;
-    this.firstTry = false;
 
-    PedagogyTracker.recordAttempt(colorId, correct, wasFirstTry && correct);
-    if (correct) PedagogyTracker.recordResponseTime(this.answer.id, ms);
+    PedagogyTracker.recordAttempt(colorId, correct, wasFirstTry);
+    if (correct) {
+      PedagogyTracker.finishRound(true, ms);
+      PedagogyTracker.recordResponseTime(this.answer.id, ms);
+    }
+    this.firstTry = false;
 
     const btn = document.querySelector('.answer-btn[data-color-id="' + colorId + '"]');
     let btnX = window.innerWidth / 2, btnY = window.innerHeight;
     if (btn) {
+      btn.classList.remove('tap-bounce');
+      void btn.offsetWidth;
+      btn.classList.add('tap-bounce');
+      setTimeout(() => btn.classList.remove('tap-bounce'), 260);
       const rect = btn.getBoundingClientRect();
       btnX = rect.left + rect.width / 2;
       btnY = rect.top + rect.height / 2;
@@ -1554,18 +1814,22 @@ const Gameplay = {
     };
     requestAnimationFrame(fillLoop);
 
-    if (this.streak === CONFIG.STREAK_CELEBRATE) {
+    if (this.streak > 0 && this.streak % CONFIG.STREAK_CELEBRATE === 0) {
       VisualEffects.candyRain();
       const b = document.createElement('div');
       b.className = 'streak-banner';
-      b.textContent = 'Incrível! 5 acertos seguidos! 🔥';
+      b.textContent = 'Combo! ' + this.streak + ' acertos seguidos!';
       document.getElementById('gameplayScreen').appendChild(b);
       setTimeout(() => b.remove(), 2200);
+      this.showMascotMessage('Muito bem!', 'happy');
     }
 
     if (this.mode !== 'tutorial') {
       const phrases = ['Uau!', 'Muito bem!', 'Arrasou!'];
       SpeechManager.speak(phrases[Math.floor(Math.random() * phrases.length)]);
+      if (this.streak % CONFIG.STREAK_CELEBRATE !== 0) {
+        this.showMascotMessage(phrases[Math.floor(Math.random() * phrases.length)], 'happy');
+      }
     }
   },
 
@@ -1575,6 +1839,7 @@ const Gameplay = {
       SpeechManager.speak('Quase! Tente de novo!');
     } else {
       SpeechManager.speak('Ops! Continue tentando!');
+      this.showMascotMessage(this.wrongCount >= 2 ? 'Vamos tentar de novo?' : 'Olhe com calma!', 'think');
     }
 
     this.recentCorrectTimes = [];
@@ -1601,9 +1866,10 @@ const Gameplay = {
 
     const correctBtn = document.querySelector('.answer-btn[data-color-id="' + this.answer.id + '"]');
 
-    if (this.wrongCount === 1) {
+    const hintAt = Math.max(1, this.difficultyConfig.hintsAfterErrors || 2);
+    if (this.wrongCount >= hintAt && this.wrongCount < hintAt + 1) {
       if (correctBtn) correctBtn.classList.add('hint-soft');
-    } else if (this.wrongCount >= 2) {
+    } else if (this.wrongCount >= hintAt + 1) {
       document.querySelectorAll('.answer-btn').forEach(b => b.classList.remove('hint-soft'));
       if (correctBtn) {
         correctBtn.classList.add('hint-mega');
@@ -1659,19 +1925,40 @@ const Gameplay = {
   },
 
   levelComplete() {
-    AudioManager.playWinElaborate();
     this.running = false;
 
-    const pct = this.score / Math.max(1, this.totalSeqs * 10);
-    const stars = pct >= 0.9 ? 3 : pct >= 0.6 ? 2 : pct >= 0.3 ? 1 : 0;
+    const result = PedagogyTracker.endSession() || {
+      nota: 0,
+      passed: false,
+      totalRounds: this.seqsCompleted,
+      correctRounds: 0,
+      firstTryCorrect: 0,
+      avgResponseTime: 0,
+      minGradeToPass: this.difficultyConfig.minGradeToPass,
+      difficultyLabel: this.difficultyConfig.label,
+      recommendation: 'Repetir a fase para gerar dados pedagógicos mais confiáveis.'
+    };
+    const passed = !!result.passed;
+    const stars = getStarsFromGrade(result.nota, passed);
 
     if (this.level) {
       StorageManager.set(d => {
         const cur = d.levelStars[this.level.id] || 0;
         d.levelStars[this.level.id] = Math.max(cur, stars);
         const nextId = this.level.id + 1;
-        if (!d.unlockedLevels.includes(nextId) && nextId <= CONFIG.MAP_LEVELS) {
+        if (passed && !d.unlockedLevels.includes(nextId) && nextId <= CONFIG.MAP_LEVELS) {
           d.unlockedLevels.push(nextId);
+        }
+        if (passed) {
+          if (!d.unlockedStickers) d.unlockedStickers = [];
+          if (!d.rewardStickers) d.rewardStickers = [];
+          const stickerId = CONFIG.STICKER_REWARD_BY_LEVEL[this.level.id];
+          if (stickerId && !d.unlockedStickers.includes(stickerId)) {
+            d.unlockedStickers.push(stickerId);
+          }
+          if (stickerId && !d.rewardStickers.includes(stickerId)) {
+            d.rewardStickers.push(stickerId);
+          }
         }
         const att = d.levelAttempts[this.level.id] || { sum: 0, rounds: 0 };
         att.sum += this.mistakesThisLevel;
@@ -1680,15 +1967,21 @@ const Gameplay = {
       });
     }
 
-    const nota = PedagogyTracker.endSession();
-
-    if (stars === 3) {
+    if (passed && stars === 3) {
       AudioManager.playTrophy();
       VisualEffects.burst(window.innerWidth / 2, window.innerHeight / 3, 50);
     }
 
-    VisualEffects.candyRain();
-    setTimeout(() => GameEngine.showResult(stars, this.score, this.mode, nota), 900);
+    if (passed) {
+      AudioManager.playWinElaborate();
+      VisualEffects.candyRain();
+      this.showMascotMessage('Você conseguiu!', 'happy');
+    } else {
+      AudioManager.playSuccess();
+      VisualEffects.burst(window.innerWidth / 2, window.innerHeight / 2, 22);
+      this.showMascotMessage('Vamos praticar mais!', 'think');
+    }
+    setTimeout(() => GameEngine.showResult(stars, this.score, this.mode, result), 900);
   },
 
   startLoop() {
@@ -1732,6 +2025,33 @@ const ProfessorPanel = {
     } else {
       scoreEl.textContent = '--';
       descEl.textContent = 'Nenhuma sessão registrada ainda';
+    }
+
+    const latest = (d.sessions || [])[0] || null;
+    const summaryEl = document.getElementById('profSessionSummary');
+    const recEl = document.getElementById('profRecommendation');
+    if (summaryEl) {
+      if (latest) {
+        const minGrade = latest.minGradeToPass || getDifficultyConfig(latest.difficulty).minGradeToPass;
+        const status = latest.passed ? 'Apto para próxima fase' : 'Recomenda-se repetir';
+        summaryEl.innerHTML =
+          '<div><span>Dificuldade</span><strong>' + (latest.difficultyLabel || getDifficultyConfig(latest.difficulty).label) + '</strong></div>' +
+          '<div><span>Nota mínima</span><strong>' + minGrade + '/100</strong></div>' +
+          '<div><span>Status</span><strong>' + status + '</strong></div>' +
+          '<div><span>Primeira tentativa</span><strong>' + (latest.firstTryCorrect || 0) + '/' + (latest.totalRounds || 0) + '</strong></div>' +
+          '<div><span>Acertos totais</span><strong>' + (latest.correctRounds || 0) + '/' + (latest.totalRounds || 0) + '</strong></div>' +
+          '<div><span>Tempo médio</span><strong>' + formatSeconds(latest.avgResponseTime || 0) + '</strong></div>';
+      } else {
+        summaryEl.innerHTML = '<div><span>Sem sessões registradas</span><strong>—</strong></div>';
+      }
+    }
+    if (recEl) {
+      recEl.textContent = latest ? (latest.recommendation || 'Observar mais uma sessão para recomendação automática.') : 'Sem recomendação ainda.';
+    }
+    if (latest && descEl) {
+      descEl.textContent = (latest.passed ? 'Apto para próxima fase' : 'Recomenda-se repetir') +
+        ' · mínimo ' + (latest.minGradeToPass || getDifficultyConfig(latest.difficulty).minGradeToPass) + ' na dificuldade ' +
+        (latest.difficultyLabel || getDifficultyConfig(latest.difficulty).label);
     }
 
     const accChart = document.getElementById('sessionAccuracyChart');
@@ -1785,6 +2105,30 @@ const ProfessorPanel = {
     }
     document.getElementById('hardestPhase').textContent = hardest;
 
+    let hardColorText = 'Cor com mais dificuldade: —';
+    let hardColorPct = -1;
+    for (const c of COLORS) {
+      const total = d.colorTotal[c.id] || 0;
+      const errors = d.colorErrors[c.id] || 0;
+      const pct = total ? Math.round((errors / total) * 100) : 0;
+      if (total > 0 && pct > hardColorPct) {
+        hardColorPct = pct;
+        hardColorText = 'Cor com mais dificuldade: ' + c.label + ' (' + pct + '% de erros)';
+      }
+    }
+    const hardestColorEl = document.getElementById('hardestColor');
+    if (hardestColorEl) hardestColorEl.textContent = hardColorText;
+
+    let totalTime = 0;
+    let totalTimeCount = 0;
+    for (const c of COLORS) {
+      totalTime += d.responseTimeSum[c.id] || 0;
+      totalTimeCount += d.responseTimeCount[c.id] || 0;
+    }
+    const avgGeneral = totalTimeCount ? Math.round(totalTime / totalTimeCount) : 0;
+    const avgTimeEl = document.getElementById('profGlobalAvgTime');
+    if (avgTimeEl) avgTimeEl.textContent = 'Tempo médio geral: ' + (avgGeneral ? formatSeconds(avgGeneral) : '—');
+
     const list = document.getElementById('sessionList');
     list.innerHTML = '';
     if (!d.sessions || d.sessions.length === 0) {
@@ -1797,7 +2141,13 @@ const ProfessorPanel = {
     }
 
     const cfg = d.settings || {};
-    document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b.dataset.speed === cfg.speed));
+    const activeSpeed = normalizeDifficultyKey(cfg.speed);
+    document.querySelectorAll('.speed-btn').forEach(b => {
+      const diffCfg = getDifficultyConfig(b.dataset.speed);
+      b.textContent = diffCfg.label;
+      b.title = diffCfg.teacherText;
+      b.classList.toggle('active', b.dataset.speed === activeSpeed);
+    });
 
     const tl = document.getElementById('toggleLabels');
     tl.textContent = 'Mostrar nomes: ' + (cfg.showLabels ? 'ON' : 'OFF');
@@ -1816,7 +2166,7 @@ const ProfessorPanel = {
   },
 
   setSpeed(speed) {
-    StorageManager.set(d => { if (!d.settings) d.settings = {}; d.settings.speed = speed; });
+    StorageManager.set(d => { if (!d.settings) d.settings = {}; d.settings.speed = normalizeDifficultyKey(speed); });
     this.refresh();
   },
   toggleLabels() {
@@ -2121,7 +2471,7 @@ const GameEngine = {
     this.updateMenuLock();
   },
 
-  showResult(stars, score, mode, nota) {
+  showResult(stars, score, mode, resultData) {
     GameStateMachine.transition(GameState.RESULT);
     AudioManager.stopBGM();
     AudioManager.playBGMMenu();
@@ -2130,6 +2480,24 @@ const GameEngine = {
     const lv = Gameplay.level;
     const data = StorageManager.get();
     const nextLv = lv && lv.id < CONFIG.MAP_LEVELS ? LevelManager.getLevel(lv.id + 1) : null;
+    const result = typeof resultData === 'object' && resultData
+      ? resultData
+      : { nota: Number(resultData) || 0, passed: true };
+    const nota = Number.isFinite(result.nota) ? result.nota : 0;
+    const minGrade = result.minGradeToPass || getCurrentDifficultyConfig().minGradeToPass;
+    const passed = result.passed !== false;
+    const totalRounds = result.totalRounds || Gameplay.totalSeqs || 0;
+    const correctRounds = result.correctRounds || 0;
+    const firstTryCorrect = result.firstTryCorrect || 0;
+    const avgTime = result.avgResponseTime || 0;
+    const difficultyLabel = result.difficultyLabel || getCurrentDifficultyConfig().label;
+    const childMessage = getChildResultMessage(nota, minGrade, passed);
+    const statusText = passed ? 'Aprovado para a próxima fase' : 'Vamos treinar mais um pouquinho';
+    const recommendation = result.recommendation || buildPedagogicalRecommendation({
+      accuracyPct: totalRounds ? Math.round((correctRounds / totalRounds) * 100) : 0,
+      avgResponseTime: avgTime,
+      firstTryRate: totalRounds ? Math.round((firstTryCorrect / totalRounds) * 100) : 0
+    });
 
     let starsHTML = '';
     for (let i = 0; i < 3; i++) {
@@ -2142,9 +2510,9 @@ const GameEngine = {
     }
 
     let nextName = nextLv ? nextLv.name : '—';
-    let buttons = '<button type="button" class="btn-glossy btn-pink btn-small" onclick="GameEngine.retryLevel()">🔄 REPETIR</button>' +
+    let buttons = '<button type="button" class="btn-glossy btn-pink btn-small" onclick="GameEngine.retryLevel()">' + (passed ? 'REPETIR' : 'TENTAR DE NOVO') + '</button>' +
       '<button type="button" class="btn-glossy btn-choco btn-small" onclick="GameEngine.showMenu()">🏠 MENU</button>';
-    if (mode === 'story' && nextLv && data.unlockedLevels.includes(nextLv.id)) {
+    if (passed && mode === 'story' && nextLv && data.unlockedLevels.includes(nextLv.id)) {
       buttons += '<button type="button" class="btn-glossy btn-green btn-small" onclick="GameEngine.startMode(\'story\',' + nextLv.id + ')">➡️ PRÓXIMA FASE</button>';
     } else if (mode === 'story') {
       buttons += '<button type="button" class="btn-glossy btn-green btn-small" onclick="GameEngine.showMap()">🗺️ MAPA</button>';
@@ -2163,16 +2531,32 @@ const GameEngine = {
     };
 
     let scoreBlock = renderScoreBlock('');
+    const resultClass = passed ? 'result-card passed' : 'result-card retry';
+    scoreBlock =
+      '<div class="' + resultClass + '">' +
+        '<div class="result-grade-row"><span>Nota Final</span><strong>' + nota + '/100</strong></div>' +
+        '<div class="result-status">' + statusText + '</div>' +
+        '<div class="result-child-message">' + childMessage + '</div>' +
+        '<div class="result-metrics">' +
+          '<div><span>Acertos de primeira</span><strong>' + firstTryCorrect + '/' + totalRounds + '</strong></div>' +
+          '<div><span>Acertos totais</span><strong>' + correctRounds + '/' + totalRounds + '</strong></div>' +
+          '<div><span>Tempo médio</span><strong>' + formatSeconds(avgTime) + '</strong></div>' +
+          '<div><span>Dificuldade</span><strong>' + difficultyLabel + ' · min. ' + minGrade + '</strong></div>' +
+        '</div>' +
+        '<div class="result-note"><strong>Observação:</strong> ' + recommendation + '</div>' +
+      '</div>';
 
 
 
     const nextLine = (mode === 'story' && lv)
-      ? (lv.id >= CONFIG.MAP_LEVELS
-        ? '<div class="result-next">Você completou o modo História! 🎊</div>'
-        : '<div class="result-next">Próxima fase: ' + nextName + '</div>')
+      ? (!passed
+        ? '<div class="result-next">Treine mais um pouquinho para abrir a próxima fase.</div>'
+        : lv.id >= CONFIG.MAP_LEVELS
+          ? '<div class="result-next">Você completou o modo História! 🎊</div>'
+          : '<div class="result-next">Próxima fase: ' + nextName + '</div>')
       : '';
 
-    cont.innerHTML = '<div class="result-title">Fase concluída!</div>' + trophy +
+    cont.innerHTML = '<div class="result-title">' + (passed ? 'Fase concluída!' : 'Vamos praticar!') + '</div>' + trophy +
       '<div class="result-stars">' + starsHTML + '</div>' +
       scoreBlock + nextLine +
       '<div class="result-btns">' + buttons + '</div>';
@@ -2199,8 +2583,9 @@ const AlbumManager = {
     let totalStars = 0;
     for (let k in data.levelStars) totalStars += data.levelStars[k];
     let spentStars = 0;
+    const rewardStickers = data.rewardStickers || [];
     this.stickers.forEach(s => {
-      if (data.unlockedStickers.includes(s.id)) spentStars += s.cost;
+      if (data.unlockedStickers.includes(s.id) && !rewardStickers.includes(s.id)) spentStars += s.cost;
     });
     const balance = Math.max(0, totalStars - spentStars);
     
