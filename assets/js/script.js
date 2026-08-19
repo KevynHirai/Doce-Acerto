@@ -2525,8 +2525,18 @@ const GameEngine = {
   updateMenuLock() {
     const d = StorageManager.get();
     const done = !!d.tutorialCompleto;
-    document.getElementById('wrapStory').classList.toggle('menu-locked', !done);
-    document.getElementById('hintStory').style.display = done ? 'none' : 'block';
+    const btnTutorial = document.getElementById('btnTutorial');
+    if (btnTutorial) {
+      btnTutorial.style.display = done ? 'none' : 'block';
+    }
+    const wrapStory = document.getElementById('wrapStory');
+    if (wrapStory) {
+      wrapStory.classList.toggle('menu-locked', !done);
+    }
+    const hintStory = document.getElementById('hintStory');
+    if (hintStory) {
+      hintStory.style.display = done ? 'none' : 'block';
+    }
   },
 
   showScreen(id) {
@@ -2616,6 +2626,13 @@ const GameEngine = {
   },
 
   startMode(mode, levelId) {
+    if (mode === 'tutorial') {
+      const d = StorageManager.get();
+      if (d.tutorialCompleto) {
+        this.showMap();
+        return;
+      }
+    }
     Gameplay.stop();
     GameStateMachine.transition(GameState.GAMEPLAY);
     AudioManager.stopBGM();
@@ -2633,6 +2650,13 @@ const GameEngine = {
 
   retryLevel() {
     const mode = Gameplay.mode;
+    if (mode === 'tutorial') {
+      const d = StorageManager.get();
+      if (d.tutorialCompleto) {
+        this.showMap();
+        return;
+      }
+    }
     const level = Gameplay.level ? Gameplay.level.id : null;
     Gameplay.stop();
     setTimeout(() => {
@@ -2651,8 +2675,11 @@ const GameEngine = {
     this.showScreen('resultScreen');
     const cont = document.getElementById('resultContent');
     cont.innerHTML = '<div class="result-title">Parabéns! Tutorial completado! 🎉</div>' +
-      '<p class="result-next">Agora você pode jogar na História!</p>' +
-      '<div class="result-btns"><button type="button" class="btn-glossy btn-pink btn-small" onclick="GameEngine.showMenu()">🏠 MENU</button></div>';
+      '<p class="result-next">Você concluiu o tutorial e desbloqueou o Mapa da História!</p>' +
+      '<div class="result-btns">' +
+        '<button type="button" class="btn-glossy btn-green btn-small" onclick="GameEngine.showMap()">🗺️ MAPA DE FASES</button>' +
+        '<button type="button" class="btn-glossy btn-choco btn-small" onclick="GameEngine.showMenu()">🏠 MENU</button>' +
+      '</div>';
     VisualEffects.burst(window.innerWidth / 2, window.innerHeight / 2, 40);
     this.updateMenuLock();
   },
