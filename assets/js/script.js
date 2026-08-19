@@ -2478,7 +2478,6 @@ const GameEngine = {
     VisualEffects.init();
     applyBodySettingsClasses();
     this.populateMenuMascots();
-    this.setupGear();
     this.injectShakeStyle();
     this.updateMenuLock();
     this.showMenu();
@@ -2531,21 +2530,6 @@ const GameEngine = {
     const done = !!d.tutorialCompleto;
     document.getElementById('wrapStory').classList.toggle('menu-locked', !done);
     document.getElementById('hintStory').style.display = done ? 'none' : 'block';
-  },
-
-  setupGear() {
-    const gear = document.getElementById('settingsGear');
-    let holdTimer = null;
-    const start = () => {
-      gear.style.transform = 'rotate(0deg)';
-      holdTimer = setTimeout(() => { ProfessorPanel.open(); }, 3000);
-    };
-    const end = () => { clearTimeout(holdTimer); };
-    gear.addEventListener('mousedown', start);
-    gear.addEventListener('touchstart', e => { e.preventDefault(); start(); });
-    gear.addEventListener('mouseup', end);
-    gear.addEventListener('touchend', end);
-    gear.addEventListener('mouseleave', end);
   },
 
   showScreen(id) {
