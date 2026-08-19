@@ -1070,13 +1070,10 @@ const TutorialManager = {
     const r = this.roundIndex;
     if (r === 0) {
       msg.textContent = 'Toque na cor que falta na sequência! 🎯';
-    } else if (r < 4) {
-      const focus = ['red', 'blue', 'yellow', 'green'][r % 4];
-      const c = COLORS.find(x => x.id === focus);
-      msg.textContent = 'Vamos conhecer o ' + c.mascot + ' ' + c.label + '!';
-      SpeechManager.colorName(focus);
-    } else {
+    } else if (r >= 4) {
       msg.textContent = 'Você está indo muito bem! Continue assim! 🌟';
+    } else {
+      msg.textContent = 'Observe a sequência e escolha a cor correta! 🌈';
     }
     this.showArrow = (r === 0);
   },
