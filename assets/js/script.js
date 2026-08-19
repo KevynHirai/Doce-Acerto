@@ -93,9 +93,9 @@ const DIFFICULTY_ALIASES = {
 
 // ===== CORES — cada uma com fruta ou doce próprio (emoji visível em todo dispositivo) =====
 const COLORS = [
-  { id: 'red',    label: 'Vermelho', hex: '#FF3D3D', dark: '#c01010', mascot: '🍎', note: 261.6, name: 'Maça', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/01-vermelho-maca.png' },
+  { id: 'red',    label: 'Vermelho', hex: '#FF3D3D', dark: '#c01010', mascot: '🍎', note: 261.6, name: 'Maçã', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/01-vermelho-maca.png' },
   { id: 'blue',   label: 'Azul',     hex: '#5B8BFF', dark: '#2a5ad4', mascot: '🫐', note: 293.7, name: 'Blueberry', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/02-azul-blueberry.png' },
-  { id: 'yellow', label: 'Amarelo',  hex: '#FFD93D', dark: '#c4900a', mascot: '🍋', note: 329.6, name: 'Limonete', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/03-amarelo-limao.png' },
+  { id: 'yellow', label: 'Amarelo',  hex: '#FFD93D', dark: '#c4900a', mascot: '🍋', note: 329.6, name: 'Limão', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/03-amarelo-limao.png' },
   { id: 'green',  label: 'Verde',    hex: '#6BCB77', dark: '#3a9a45', mascot: '🍏', note: 349.2, name: 'Maçãzinha', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/04-verde-maca-verde.png' },
   { id: 'orange', label: 'Laranja',  hex: '#FF8C42', dark: '#cc5a12', mascot: '🍊', note: 392.0, name: 'Laranjito', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/05-laranja-laranja.png' },
   { id: 'purple', label: 'Roxo',     hex: '#C084FC', dark: '#7030a0', mascot: '🍇', note: 440.0, name: 'Uvite', asset: 'assets/img/bolinhas_chiclete_frutinhas_v2/06-roxo-uva.png' }
@@ -1056,7 +1056,7 @@ const TutorialManager = {
 
   dismissWelcome() {
     document.getElementById('tutorialWelcome').classList.add('hidden');
-    SpeechManager.speak('Oi! Eu sou a maça! Vamos aprender juntos?');
+    SpeechManager.speak('Oi! Eu sou a maçã! Vamos aprender juntos?');
     setTimeout(() => {
       this.firstRoundStarted = true;
       Gameplay.generateRound();
@@ -1076,7 +1076,7 @@ const TutorialManager = {
       msg.textContent = 'Vamos conhecer o ' + c.mascot + ' ' + c.label + '!';
       SpeechManager.colorName(focus);
     } else {
-      msg.textContent = 'Você está indo muito bem! Continue! 🌟';
+      msg.textContent = 'Você está indo muito bem! Continue assim! 🌟';
     }
     this.showArrow = (r === 0);
   },
@@ -1242,8 +1242,8 @@ const Gameplay = {
     if (mode === 'tutorial') {
       TutorialManager.reset();
       document.getElementById('tutorialWelcome').classList.remove('hidden');
-      document.getElementById('twMascot').innerHTML = '<img class="tw-mascot-img" src="assets/imgs/mascot-red-apple.png" alt="Maça">';
-      document.getElementById('twText').textContent = 'Oi! Eu sou a maça! Vamos aprender juntos?';
+      document.getElementById('twMascot').innerHTML = '<img class="tw-mascot-img" src="assets/imgs/mascot-red-apple.png" alt="Maçã">';
+      document.getElementById('twText').textContent = 'Oi! Eu sou a maçã! Vamos aprender juntos?';
       document.getElementById('tutorialMsg').style.display = 'none';
       this.startLoop();
       return;
@@ -2769,7 +2769,7 @@ const AlbumManager = {
   stickers: [
     { id: 'st_morango', name: 'Morango Feliz', cost: 3, svgIdx: 0 },
     { id: 'st_doce', name: 'Docinho Azul', cost: 5, svgIdx: 1 },
-    { id: 'st_limao', name: 'Limonete', cost: 5, svgIdx: 2 },
+    { id: 'st_limao', name: 'Limão', cost: 5, svgIdx: 2 },
     { id: 'st_maca', name: 'Maçãzinha', cost: 8, svgIdx: 3 },
     { id: 'st_castelo', name: 'Castelo Mágico', cost: 12, emoji: '🏰' },
     { id: 'st_barco', name: 'Barco Pirulito', cost: 15, emoji: '⛵' }
