@@ -33,10 +33,13 @@
   <div id="game">
     <canvas id="particleCanvas"></canvas>
     <div id="flashOverlay"></div>
+    <div id="srGameStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- ===== MENU ===== -->
     <div id="menuScreen" class="screen active">
       <div class="candy-bg"></div>
+      <button type="button" id="settingsGear" aria-label="Abrir configurações" title="Configurações"
+        onclick="ProfessorPanel.open()">⚙️</button>
       <div class="cloud cloud-1"></div>
       <div class="cloud cloud-2"></div>
       <div class="caramel-river"></div>
@@ -84,10 +87,10 @@
       <div class="mascots-row" id="menuMascots"></div>
 
       <div class="menu-buttons">
-        <button type="button" class="btn-glossy btn-pink" id="btnTutorial" aria-label="Tutorial"
+        <button type="button" class="btn-glossy btn-pink" id="btnTutorial" aria-label="Começar tutorial"
           onclick="GameEngine.startMode('tutorial')">🧸 TUTORIAL</button>
         <div id="wrapStory" class="menu-locked">
-          <button type="button" class="btn-glossy btn-choco" id="btnStory" aria-label="Modo História"
+          <button type="button" class="btn-glossy btn-choco" id="btnStory" aria-label="Abrir modo história"
             onclick="GameEngine.showMap()">🗺️ HISTÓRIA</button>
           <div class="menu-hint" id="hintStory" aria-hidden="true">Complete o tutorial para desbloquear</div>
         </div>
@@ -117,7 +120,7 @@
     <div id="gameplayScreen" class="screen">
       <div id="gameplayBg" class="gameplay-layer bg-tutorial"></div>
       <div class="gameplay-header">
-        <button type="button" class="btn-back" onclick="GameEngine.showMenu()">← MENU</button>
+        <button type="button" class="btn-back" aria-label="Voltar ao menu inicial" onclick="GameEngine.showMenu()">← MENU</button>
         <div style="display:flex;align-items:center;gap:6px;">
           <span id="comboHeart" class="combo-heart hidden">💖</span>
           <div class="score-wrap" aria-live="polite" aria-atomic="true">
@@ -150,7 +153,9 @@
             <span><strong>2</strong> Descubra</span>
             <span><strong>3</strong> Toque</span>
           </div>
-          <button type="button" class="btn-glossy btn-pink" onclick="TutorialManager.dismissWelcome()">Vamos lá!
+          <button type="button" class="btn-glossy btn-pink" id="btnTutorialStart"
+            aria-label="Começar primeira rodada do tutorial"
+            onclick="TutorialManager.dismissWelcome()">Vamos lá!
             🍎</button>
         </div>
       </div>
@@ -173,10 +178,59 @@
     </div>
 
     <!-- ===== PROFESSOR ===== -->
-    <div id="professorPanel">
+    <div id="professorPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
       <div class="prof-content">
-        <button type="button" class="prof-close" onclick="ProfessorPanel.close()">✕</button>
-        <div class="prof-title">🏫 Área do Professor / Pais</div>
+        <button type="button" class="prof-close" aria-label="Fechar configurações" onclick="ProfessorPanel.close()">✕</button>
+        <div class="settings-hero">
+          <div class="settings-candy" aria-hidden="true">🍬</div>
+          <div>
+            <div class="prof-title" id="settingsTitle">Configurações</div>
+            <p class="settings-subtitle">Som, acessibilidade e acompanhamento.</p>
+          </div>
+        </div>
+
+        <div class="prof-section settings-section">
+          <h3>🔊 Som</h3>
+          <div class="settings-grid">
+            <button type="button" class="toggle-btn" id="toggleMusic" onclick="ProfessorPanel.toggleMusic()">Música:
+              ON</button>
+            <button type="button" class="toggle-btn" id="toggleSfx" onclick="ProfessorPanel.toggleSfx()">Efeitos:
+              ON</button>
+          </div>
+          <label class="range-label" for="musicVolume">Volume da música <span id="musicVolumeValue">45%</span></label>
+          <input type="range" class="music-range" id="musicVolume" min="0" max="100" value="45"
+            oninput="ProfessorPanel.setMusicVolume(this.value)" aria-label="Volume da música">
+        </div>
+
+        <div class="prof-section settings-section">
+          <h3>♿ Acessibilidade</h3>
+          <div class="settings-grid">
+            <button type="button" class="toggle-btn" id="toggleNarration"
+              onclick="ProfessorPanel.toggleNarration()">Narração: OFF</button>
+            <button type="button" class="toggle-btn" id="toggleCalm" onclick="ProfessorPanel.toggleCalmMode()">Modo
+              calmo: OFF</button>
+            <button type="button" class="toggle-btn" id="toggleAccess"
+              onclick="ProfessorPanel.toggleAccessibility()">Alto contraste: OFF</button>
+            <button type="button" class="toggle-btn" id="toggleLabels" onclick="ProfessorPanel.toggleLabels()">Nomes:
+              OFF</button>
+            <button type="button" class="toggle-btn" id="toggleShapes" onclick="ProfessorPanel.toggleShapes()">Símbolos:
+              OFF</button>
+            <button type="button" class="toggle-btn" id="toggleDalton" onclick="ProfessorPanel.toggleDaltonism()">Modo
+              daltônico: OFF</button>
+          </div>
+        </div>
+
+        <div class="prof-section settings-section">
+          <h3>⚔️ Dificuldade</h3>
+          <div class="speed-btns">
+            <button type="button" class="speed-btn" data-speed="easy"
+              onclick="ProfessorPanel.setSpeed('easy')">Fácil</button>
+            <button type="button" class="speed-btn active" data-speed="normal"
+              onclick="ProfessorPanel.setSpeed('normal')">Normal</button>
+            <button type="button" class="speed-btn" data-speed="hard"
+              onclick="ProfessorPanel.setSpeed('hard')">Difícil</button>
+          </div>
+        </div>
 
         <div class="prof-section">
           <h3>📊 Última nota pedagógica</h3>
@@ -227,56 +281,6 @@
         </div>
 
         <div class="prof-section">
-          <h3>⚔️ Nível de Dificuldade</h3>
-          <div class="speed-btns">
-            <button type="button" class="speed-btn" data-speed="easy"
-              onclick="ProfessorPanel.setSpeed('easy')">Fácil</button>
-            <button type="button" class="speed-btn active" data-speed="normal"
-              onclick="ProfessorPanel.setSpeed('normal')">Normal</button>
-            <button type="button" class="speed-btn" data-speed="hard"
-              onclick="ProfessorPanel.setSpeed('hard')">Difícil</button>
-          </div>
-        </div>
-
-
-
-        <div class="prof-section">
-          <h3>🏷️ Rótulos nas bolinhas</h3>
-          <button type="button" class="toggle-btn" id="toggleLabels" onclick="ProfessorPanel.toggleLabels()">Mostrar
-            nomes: OFF</button>
-        </div>
-
-        <div class="prof-section">
-          <h3>🔣 Símbolos nas bolinhas</h3>
-          <button type="button" class="toggle-btn" id="toggleShapes" onclick="ProfessorPanel.toggleShapes()">Símbolos:
-            OFF</button>
-        </div>
-
-        <div class="prof-section">
-          <h3>👁️ Modo daltônico (formas nas bolinhas)</h3>
-          <button type="button" class="toggle-btn" id="toggleDalton" onclick="ProfessorPanel.toggleDaltonism()">Modo
-            daltônico: OFF</button>
-        </div>
-
-        <div class="prof-section">
-          <h3>🔊 Narração por voz</h3>
-          <button type="button" class="toggle-btn" id="toggleNarration" onclick="ProfessorPanel.toggleNarration()">Narração:
-            OFF</button>
-        </div>
-
-        <div class="prof-section">
-          <h3>🌙 Modo calmo</h3>
-          <button type="button" class="toggle-btn" id="toggleCalm" onclick="ProfessorPanel.toggleCalmMode()">Modo calmo:
-            OFF</button>
-        </div>
-
-        <div class="prof-section">
-          <h3>👀 Acessibilidade (Alto Contraste)</h3>
-          <button type="button" class="toggle-btn" id="toggleAccess" onclick="ProfessorPanel.toggleAccessibility()">Modo
-            Acessibilidade: OFF</button>
-        </div>
-
-        <div class="prof-section">
           <button type="button" class="btn-danger" onclick="ProfessorPanel.clearAllData()">🗑️ Limpar dados (histórico e
             métricas)</button>
         </div>
@@ -307,7 +311,7 @@
 
   </div>
 
-  <script src="assets/js/script.js"></script>
+  <script src="assets/js/script.js?v=30"></script>
 </body>
 
 </html>

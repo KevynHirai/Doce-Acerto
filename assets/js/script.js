@@ -4,11 +4,11 @@
 
 const DEFAULT_CONFIG = {
   levels: [
-    { id: 1, name: "🍭 Colina dos Pirulitos", pattern: "AB", colors: 2, seqs: 6, seqLenBase: 5, emoji: "🍭" },
-    { id: 2, name: "🍰 Planície do Bolo", pattern: "AB", colors: 3, seqs: 7, seqLenBase: 6, emoji: "🍰" },
-    { id: 3, name: "🍫 Montanha de Chocolate", pattern: "ABC", colors: 3, seqs: 8, seqLenBase: 7, emoji: "🍫" },
-    { id: 4, name: "🍦 Vale do Sorvete", pattern: "AABB|ABC", colors: 4, seqs: 10, seqLenBase: 8, emoji: "🍦" },
-    { id: 5, name: "🏰 Castelo de Açúcar", pattern: "mixed", patterns: ["AB", "ABC", "AABB"], colors: 4, maxColors: 5, seqs: 12, seqLenBase: 9, emoji: "🏰" }
+    { id: 1, name: "🍭 Colina dos Pirulitos", pattern: "AB", colors: 2, seqs: 6, seqLenBase: 5, emoji: "🍭", storyBg: "url('assets/img/backgrounds_fases_doce_acerto/01-colina-dos-pirulitos.png') center center / cover no-repeat" },
+    { id: 2, name: "🍰 Planície do Bolo", pattern: "AB", colors: 3, seqs: 7, seqLenBase: 6, emoji: "🍰", storyBg: "url('assets/img/backgrounds_fases_doce_acerto/02-planicie-do-bolo.png') center center / cover no-repeat" },
+    { id: 3, name: "🍫 Montanha de Chocolate", pattern: "ABC", colors: 3, seqs: 8, seqLenBase: 7, emoji: "🍫", storyBg: "url('assets/img/backgrounds_fases_doce_acerto/03-montanha-de-chocolate.png') center center / cover no-repeat" },
+    { id: 4, name: "🍦 Vale do Sorvete", pattern: "AABB|ABC", colors: 4, seqs: 10, seqLenBase: 8, emoji: "🍦", storyBg: "url('assets/img/backgrounds_fases_doce_acerto/04-vale-do-sorvete.png') center center / cover no-repeat" },
+    { id: 5, name: "🏰 Castelo de Açúcar", pattern: "mixed", patterns: ["AB", "ABC", "AABB"], colors: 4, maxColors: 5, seqs: 12, seqLenBase: 9, emoji: "🏰", storyBg: "url('assets/img/backgrounds_fases_doce_acerto/05-castelo-de-acucar.png') center center / cover no-repeat" }
   ]
 };
 
@@ -221,8 +221,13 @@ const StorageManager = {
     for (let k in def) {
       if (data[k] === undefined) data[k] = def[k];
     }
-    data.settings = Object.assign({}, def.settings, data.settings || {});
+    const incomingSettings = data.settings && typeof data.settings === 'object' ? data.settings : {};
+    data.settings = Object.assign({}, def.settings, incomingSettings);
     data.settings.speed = normalizeDifficultyKey(data.settings.speed);
+    data.settings.musicEnabled = data.settings.musicEnabled !== false;
+    data.settings.sfxEnabled = data.settings.sfxEnabled !== false;
+    const musicVolume = Number(data.settings.musicVolume);
+    data.settings.musicVolume = Number.isFinite(musicVolume) ? clamp01(musicVolume) : def.settings.musicVolume;
     for (const c of COLORS) {
       if (data.colorErrors[c.id] === undefined) data.colorErrors[c.id] = 0;
       if (data.colorTotal[c.id] === undefined) data.colorTotal[c.id] = 0;
@@ -248,7 +253,10 @@ const StorageManager = {
         colorblind: false,
         accessibility: false,
         narration: false,
-        calmMode: false
+        calmMode: false,
+        musicEnabled: true,
+        sfxEnabled: true,
+        musicVolume: 0.45
       },
       colorErrors: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
       colorTotal: { red: 0, blue: 0, yellow: 0, green: 0, orange: 0, purple: 0 },
@@ -446,15 +454,32 @@ const AudioManager = {
   bgmMenu: null,
   bgmGame: null,
   activeBgm: null,
+  desiredBgm: null,
+  proceduralBgmTimer: null,
+  proceduralBgmKind: null,
+  proceduralBgmStep: 0,
   init() {
     this._loadBgmSlots();
+  },
+  _settings() {
+    return StorageManager.get().settings || {};
+  },
+  _musicEnabled() {
+    return this._settings().musicEnabled !== false;
+  },
+  _sfxEnabled() {
+    return this._settings().sfxEnabled !== false;
+  },
+  _musicVolume() {
+    const v = Number(this._settings().musicVolume);
+    return Number.isFinite(v) ? clamp01(v) : 0.45;
   },
   ensureCtx() {
     if (!this.ctx) {
       try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
   },
   _loadBgmSlots() {
@@ -462,47 +487,115 @@ const AudioManager = {
       try {
         this.bgmMenu = new Audio(AudioURL.BGM_MENU);
         this.bgmMenu.loop = true;
-        this.bgmMenu.volume = 0.32;
       } catch (e) { this.bgmMenu = null; }
     }
     if (AudioURL.BGM_GAME && !this.bgmGame) {
       try {
         this.bgmGame = new Audio(AudioURL.BGM_GAME);
         this.bgmGame.loop = true;
-        this.bgmGame.volume = 0.28;
       } catch (e) { this.bgmGame = null; }
     }
+    this._applyBgmVolume();
+  },
+  _applyBgmVolume() {
+    const volume = this._musicVolume();
+    if (this.bgmMenu) this.bgmMenu.volume = Math.min(0.65, volume * 0.75);
+    if (this.bgmGame) this.bgmGame.volume = Math.min(0.6, volume * 0.65);
   },
   _stopAllBgm() {
     [this.bgmMenu, this.bgmGame].forEach(a => {
       if (a) { a.pause(); try { a.currentTime = 0; } catch (e) {} }
     });
+    this._stopProceduralBgm();
     this.activeBgm = null;
   },
-  resume() { this.ensureCtx(); },
-  playBGMMenu() {
+  _stopProceduralBgm() {
+    if (this.proceduralBgmTimer) {
+      clearInterval(this.proceduralBgmTimer);
+      this.proceduralBgmTimer = null;
+    }
+    this.proceduralBgmKind = null;
+  },
+  resume() {
+    this.ensureCtx();
+    this._playDesiredBgm();
+  },
+  refreshSettings() {
+    this._applyBgmVolume();
+    if (!this._musicEnabled()) {
+      this._stopAllBgm();
+      return;
+    }
+    this._playDesiredBgm();
+  },
+  _playDesiredBgm() {
+    if (!this.desiredBgm || !this._musicEnabled()) return;
     this._loadBgmSlots();
-    if (!this.bgmMenu || !AudioURL.BGM_MENU) return;
-    if (this.activeBgm === this.bgmMenu) return;
+    const slot = this.desiredBgm === 'game' ? this.bgmGame : this.bgmMenu;
+    const hasFile = this.desiredBgm === 'game' ? !!AudioURL.BGM_GAME : !!AudioURL.BGM_MENU;
+    if (slot && hasFile) {
+      if (this.activeBgm === slot) return;
+      this._stopAllBgm();
+      this.activeBgm = slot;
+      this._applyBgmVolume();
+      slot.play().catch(() => {});
+      return;
+    }
+    this._startProceduralBgm(this.desiredBgm);
+  },
+  _startProceduralBgm(kind) {
+    this.ensureCtx();
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    if (this.proceduralBgmTimer && this.proceduralBgmKind === kind) return;
     this._stopAllBgm();
-    this.activeBgm = this.bgmMenu;
-    this.bgmMenu.play().catch(() => {});
+    this.proceduralBgmKind = kind;
+    this.proceduralBgmStep = 0;
+    this._playBgmNote();
+    this.proceduralBgmTimer = setInterval(() => this._playBgmNote(), kind === 'game' ? 280 : 360);
+  },
+  _playBgmNote() {
+    if (!this.ctx || !this._musicEnabled()) return;
+    const menuMelody = [523, 659, 784, 659, 587, 698, 880, 698];
+    const gameMelody = [659, 784, 988, 784, 698, 880, 1046, 880];
+    const melody = this.proceduralBgmKind === 'game' ? gameMelody : menuMelody;
+    const bass = this.proceduralBgmKind === 'game' ? [196, 247, 220, 262] : [174, 220, 196, 247];
+    const step = this.proceduralBgmStep++;
+    const volume = this._musicVolume() * (isCalmMode() ? 0.22 : 0.36);
+    const t = this.ctx.currentTime;
+    const playTone = (freq, type, duration, gainValue, delay) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.connect(gain); gain.connect(this.ctx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t + delay);
+      gain.gain.setValueAtTime(0.001, t + delay);
+      gain.gain.linearRampToValueAtTime(gainValue, t + delay + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + duration);
+      osc.start(t + delay);
+      osc.stop(t + delay + duration + 0.03);
+    };
+    playTone(melody[step % melody.length], 'triangle', 0.22, volume, 0);
+    if (step % 2 === 0) playTone(bass[Math.floor(step / 2) % bass.length], 'sine', 0.32, volume * 0.45, 0.01);
+  },
+  playBGMMenu() {
+    this.desiredBgm = 'menu';
+    this._playDesiredBgm();
   },
   playBGMGame() {
-    this._loadBgmSlots();
-    if (!this.bgmGame || !AudioURL.BGM_GAME) return;
-    if (this.activeBgm === this.bgmGame) return;
-    this._stopAllBgm();
-    this.activeBgm = this.bgmGame;
-    this.bgmGame.play().catch(() => {});
+    this.desiredBgm = 'game';
+    this._playDesiredBgm();
   },
-  stopBGM() { this._stopAllBgm(); },
+  stopBGM() {
+    this.desiredBgm = null;
+    this._stopAllBgm();
+  },
   playSFX(name) {
+    if (!this._sfxEnabled()) return;
     const url = AudioURL[name];
     if (!url) return;
     try {
       const a = new Audio(url);
-      a.volume = 0.45;
+      a.volume = 0.45 * this._musicVolume();
       a.play().catch(() => {});
     } catch (e) {}
   },
@@ -515,7 +608,7 @@ const AudioManager = {
     this._play(660, 'sine', 0.04, 0.12, 0);
   },
   _play(freq, type, duration, vol, delay) {
-    if (!this.ctx || !this.enabled) return;
+    if (!this.ctx || !this.enabled || !this._sfxEnabled()) return;
     const finalVol = vol * (isCalmMode() ? 0.35 : 1);
     const t = this.ctx.currentTime + (delay || 0);
     const osc = this.ctx.createOscillator();
@@ -528,7 +621,7 @@ const AudioManager = {
     osc.start(t); osc.stop(t + duration + 0.02);
   },
   playPop() {
-    if (!this.ctx) return; this.resume();
+    if (!this._sfxEnabled() || !this.ctx) return; this.resume();
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.connect(g); g.connect(this.ctx.destination);
     o.type = 'sine'; o.frequency.setValueAtTime(880, this.ctx.currentTime);
@@ -545,7 +638,7 @@ const AudioManager = {
   /** Som lúdico “boing” — sem tons graves de erro */
   playError() {
     if (AudioURL.SFX_ERR) { this.playSFX('SFX_ERR'); return; }
-    if (!this.ctx) return; this.resume();
+    if (!this._sfxEnabled() || !this.ctx) return; this.resume();
     const t0 = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
@@ -569,7 +662,7 @@ const AudioManager = {
     this._play(880, 'square', 0.04, 0.08, 0);
   },
   playSwoosh() {
-    if (!this.ctx) return; this.resume();
+    if (!this._sfxEnabled() || !this.ctx) return; this.resume();
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.connect(g); g.connect(this.ctx.destination);
     o.type = 'sine';
@@ -599,6 +692,14 @@ const SpeechManager = {
   isEnabled() {
     const settings = StorageManager.get().settings || {};
     return !!settings.narration;
+  },
+  announce(text, speakToo) {
+    const live = document.getElementById('srGameStatus');
+    if (live) {
+      live.textContent = '';
+      setTimeout(() => { live.textContent = text; }, 20);
+    }
+    if (speakToo) this.speak(text);
   },
   speak(text) {
     if (!this.isEnabled()) return;
@@ -1119,6 +1220,9 @@ const Gameplay = {
   slowMoUntil: 0,
   specialBlank: null,
   recentCorrectTimes: [],
+  gameplaySettings: {},
+  motionClock: 0,
+  lastFrameTime: 0,
 
   getDynamicSpeedFactor() {
     let f = this.baseSpeedMul * (1 + Math.min(this.streak, 15) * 0.2);
@@ -1196,9 +1300,12 @@ const Gameplay = {
     this.hitStopUntil = 0;
     this.specialBlank = null;
     this.recentCorrectTimes = [];
+    this.motionClock = 0;
+    this.lastFrameTime = 0;
 
     const data = StorageManager.get();
     const cfg = data.settings || { speed: 'normal' };
+    this.gameplaySettings = cfg;
     const diff = normalizeDifficultyKey(cfg.speed);
     this.difficultyKey = diff;
     this.difficultyConfig = getDifficultyConfig(diff);
@@ -1242,6 +1349,10 @@ const Gameplay = {
       document.getElementById('twMascot').innerHTML = '<img class="tw-mascot-img" src="assets/imgs/mascot-red-apple.png" alt="Maçã">';
       document.getElementById('twText').textContent = 'Oi! Eu sou a maçã! Vamos aprender juntos?';
       document.getElementById('tutorialMsg').style.display = 'none';
+      setTimeout(() => {
+        const startBtn = document.getElementById('btnTutorialStart');
+        if (startBtn) startBtn.focus({ preventScroll: true });
+      }, 80);
       this.startLoop();
       return;
     }
@@ -1258,6 +1369,11 @@ const Gameplay = {
   applyGameplayBackground() {
     const layer = document.getElementById('gameplayBg');
     layer.className = 'gameplay-layer';
+    layer.style.background = '';
+    layer.style.backgroundImage = '';
+    layer.style.backgroundPosition = '';
+    layer.style.backgroundSize = '';
+    layer.style.backgroundRepeat = '';
     if (this.mode === 'tutorial') {
       layer.classList.add('bg-tutorial');
       layer.innerHTML = '';
@@ -1273,8 +1389,16 @@ const Gameplay = {
       layer.innerHTML = '';
     } else {
       layer.classList.add('bg-story');
-      const bg = this.level && this.level.storyBg ? this.level.storyBg : 'linear-gradient(180deg,#ffd6e8,#a8e4ff)';
-      layer.style.background = bg;
+      const bg = this.level && this.level.storyBg ? this.level.storyBg : null;
+      const bgAsset = this.level && this.level.storyBgAsset ? this.level.storyBgAsset : null;
+      if (bgAsset) {
+        layer.style.backgroundImage = 'url("' + bgAsset + '")';
+        layer.style.backgroundPosition = 'center center';
+        layer.style.backgroundSize = 'cover';
+        layer.style.backgroundRepeat = 'no-repeat';
+      } else {
+        layer.style.background = bg || 'linear-gradient(180deg,#ffd6e8,#a8e4ff)';
+      }
       layer.innerHTML = '';
     }
   },
@@ -1340,22 +1464,27 @@ const Gameplay = {
   buildAnswerBtns() {
     const container = document.getElementById('answerBtns');
     container.innerHTML = '';
-    const settings = StorageManager.get().settings;
+    const settings = this.gameplaySettings || StorageManager.get().settings || {};
     const showCb = !!settings.colorblind;
     const showShapes = showCb || !!settings.showShapes;
     const landscape = typeof window.matchMedia === 'function' &&
       window.matchMedia('(orientation: landscape) and (max-height: 520px)').matches;
+    container.setAttribute('role', 'group');
+    container.setAttribute('aria-label', 'Botões de resposta por cor. Use Tab e Enter, ou as teclas de 1 a 6.');
 
-    const appendBtn = (parent, c) => {
+    const appendBtn = (parent, c, index) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'answer-btn';
       btn.dataset.colorId = c.id;
       btn.classList.add('answer-btn-image');
       btn.style.background = 'transparent';
-      btn.innerHTML = '<img class="answer-btn-img" src="' + c.asset + '" alt="' + c.label + '">';
+      btn.setAttribute('aria-label', 'Responder ' + c.label + '. Tecla ' + (index + 1) + '.');
+      btn.setAttribute('aria-keyshortcuts', String(index + 1));
+      btn.title = c.label;
+      btn.innerHTML = '<img class="answer-btn-img" src="' + c.asset + '" alt="" aria-hidden="true"><span class="sr-only">' + c.label + '</span>';
       if (showShapes) {
-        btn.innerHTML += '<span class="answer-shape-symbol">' + (SHAPE_SYMBOL_BY_COLOR[c.id] || '●') + '</span>';
+        btn.innerHTML += '<span class="answer-shape-symbol" aria-hidden="true">' + (SHAPE_SYMBOL_BY_COLOR[c.id] || '●') + '</span>';
       }
       btn.addEventListener('click', () => {
         AudioManager.playClick();
@@ -1370,11 +1499,11 @@ const Gameplay = {
       const right = document.createElement('div');
       right.className = 'answer-btn-col';
       const half = Math.ceil(this.colors.length / 2);
-      this.colors.forEach((c, i) => appendBtn(i < half ? left : right, c));
+      this.colors.forEach((c, i) => appendBtn(i < half ? left : right, c, i));
       container.appendChild(left);
       container.appendChild(right);
     } else {
-      for (const c of this.colors) appendBtn(container, c);
+      this.colors.forEach((c, i) => appendBtn(container, c, i));
     }
 
     if (this.mode === 'tutorial' && this.answer) {
@@ -1393,6 +1522,22 @@ const Gameplay = {
     ar.className = 'tutorial-arrow';
     ar.textContent = '👇';
     btn.appendChild(ar);
+  },
+
+  announceRound() {
+    if (!this.sequence.length || !this.answer) return;
+    const seqText = this.sequence.map((color, index) => {
+      if (index === this.blankIdx) return 'espaço em branco';
+      return color.label;
+    }).join(', ');
+    const round = this.totalSeqs === Infinity
+      ? 'Rodada ' + (this.seqsCompleted + 1)
+      : 'Rodada ' + (this.seqsCompleted + 1) + ' de ' + this.totalSeqs;
+    const choices = this.colors.map((color, index) => (index + 1) + ', ' + color.label).join('; ');
+    const text = round + '. Sequência: ' + seqText + '. Escolha a cor que falta. Opções: ' + choices + '.';
+    SpeechManager.announce(text, SpeechManager.isEnabled());
+    const firstAnswer = document.querySelector('.answer-btn:not(:disabled)');
+    if (firstAnswer) setTimeout(() => firstAnswer.focus({ preventScroll: true }), 60);
   },
 
   updateScoreDisplay() {
@@ -1440,6 +1585,7 @@ const Gameplay = {
 
   generateRound() {
     if (!this.canvasVisible()) return;
+    this.gameplaySettings = StorageManager.get().settings || {};
     this.wrongCount = 0;
     this.firstTry = true;
     this.hintActive = false;
@@ -1500,6 +1646,7 @@ const Gameplay = {
     }
 
     this.buildAnswerBtns();
+    this.announceRound();
     this.drawScene();
   },
 
@@ -1508,7 +1655,10 @@ const Gameplay = {
     if (!gs || !gs.classList.contains('active')) return;
     if (!this.canvas || !this.ctx || !this.canvasVisible()) return;
     const ctx = this.ctx;
-    const w = this.canvas.width, h = this.canvas.height;
+    const w = this.logicalWidth || this.canvas.width;
+    const h = this.logicalHeight || this.canvas.height;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, w, h);
 
     if (!this.bezier) this.buildBezier();
@@ -1632,7 +1782,7 @@ const Gameplay = {
     const visible = slide * totalEntry >= i * entryGap;
     const easedSlide = 1 - Math.pow(1 - localSlide, 3);
     const exit = this.getMachineExitPoint(b, baseR);
-    const x = exit.x + (p.x - exit.x) * easedSlide + Math.sin(t * Math.PI * 2 + Date.now() / (800 / wobbleDiv)) * 2;
+    const x = exit.x + (p.x - exit.x) * easedSlide + Math.sin(t * Math.PI * 2 + this.motionClock / (800 / wobbleDiv)) * 2;
     const y = exit.y + (p.y - exit.y) * easedSlide - (localSlide < 1 ? Math.abs(Math.sin(localSlide * Math.PI * 4)) * baseR * 0.18 * (1 - localSlide) : 0);
     const dx = p.x - exit.x;
     const dy = p.y - exit.y;
@@ -1644,7 +1794,7 @@ const Gameplay = {
     const seq = this.sequence;
     const n = seq.length;
     const dyn = this.getDynamicSpeedFactor();
-    const settings = StorageManager.get().settings;
+    const settings = this.gameplaySettings || StorageManager.get().settings || {};
     const showLabels = settings.showLabels;
     const colorblind = settings.colorblind || settings.showShapes;
     const cw = this.logicalWidth || this.canvas.width;
@@ -1665,7 +1815,7 @@ const Gameplay = {
       const c = seq[i];
       const isBlank = (i === this.blankIdx);
       const ballR = ballRBase * squash;
-      const rollAngle = -pos.travel / Math.max(1, ballRBase);
+      const rollAngle = -pos.travel / Math.max(1, ballRBase) + this.motionClock * 0.0025 * Math.max(0.6, dyn);
 
       ctx.save();
       ctx.translate(x, y);
@@ -1674,9 +1824,9 @@ const Gameplay = {
       ctx.scale(1, squash);
 
       if (isBlank) {
-        const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+        const pulse = 0.5 + 0.5 * Math.sin(this.motionClock / 200);
         if (this.specialBlank === 'rainbow') {
-          const hue = (Date.now() / 5) % 360;
+          const hue = (this.motionClock / 5) % 360;
           ctx.strokeStyle = 'hsla(' + hue + ', 90%, 58%, ' + (0.75 + pulse * 0.2) + ')';
           ctx.lineWidth = 5 + pulse * 2;
           ctx.beginPath();
@@ -1734,10 +1884,6 @@ const Gameplay = {
         ctx.fillText(c.label, x, y + ballR + Math.max(12, ballR * 0.38));
         ctx.restore();
       }
-    }
-
-    if (this.slideT < 1) {
-      this.slideT += 0.0065 * Math.min(1.15, dyn);
     }
   },
 
@@ -1845,6 +1991,7 @@ const Gameplay = {
   },
 
   onCorrect() {
+    SpeechManager.announce('Você acertou. A próxima sequência será preparada.', false);
     AudioManager.playPop();
     setTimeout(() => AudioManager.playSuccess(), 90);
     VisualEffects.flash();
@@ -1971,7 +2118,11 @@ const Gameplay = {
     if (this.mode !== 'tutorial') this.mistakesThisLevel++;
 
     const wrongBtn = document.querySelector('.answer-btn[data-color-id="' + colorId + '"]');
-    if (wrongBtn) wrongBtn.classList.add('answer-btn-eliminated');
+    if (wrongBtn) {
+      wrongBtn.classList.add('answer-btn-eliminated');
+      wrongBtn.disabled = true;
+      wrongBtn.setAttribute('aria-disabled', 'true');
+    }
 
     const correctBtn = document.querySelector('.answer-btn[data-color-id="' + this.answer.id + '"]');
 
@@ -1994,6 +2145,10 @@ const Gameplay = {
       document.getElementById('gameplayScreen').appendChild(h);
       setTimeout(() => h.remove(), CONFIG.HINT_NAME_MS);
     }
+    const accessibleHint = this.wrongCount >= 3 && this.answer
+      ? 'Tente novamente. Dica: a cor que falta é ' + this.answer.label + '.'
+      : 'Tente novamente. Observe a sequência e escolha outro botão.';
+    SpeechManager.announce(accessibleHint, false);
   },
 
   fadeThenNewRound() {
@@ -2095,9 +2250,22 @@ const Gameplay = {
     setTimeout(() => GameEngine.showResult(stars, this.score, this.mode, result), 900);
   },
 
+  updateMotion(now) {
+    if (!this.lastFrameTime) this.lastFrameTime = now;
+    const dt = Math.min(50, Math.max(0, now - this.lastFrameTime));
+    this.lastFrameTime = now;
+    const dyn = this.getDynamicSpeedFactor();
+    this.motionClock += dt * Math.min(2.4, Math.max(0.35, dyn));
+    if (this.slideT < 1) {
+      const frameScale = dt / 16.67;
+      this.slideT = Math.min(1, this.slideT + 0.0065 * Math.min(1.15, dyn) * frameScale);
+    }
+  },
+
   startLoop() {
-    const loop = () => {
+    const loop = (now) => {
       if (this.running) {
+        this.updateMotion(now || performance.now());
         if (Date.now() >= this.hitStopUntil) {
           this.drawScene();
         }
@@ -2120,10 +2288,19 @@ const Gameplay = {
 // ===== ProfessorPanel =====
 const ProfessorPanel = {
   open() {
-    document.getElementById('professorPanel').classList.add('open');
+    const panel = document.getElementById('professorPanel');
+    panel.classList.add('open');
     this.refresh();
+    setTimeout(() => {
+      const close = panel.querySelector('.prof-close');
+      if (close) close.focus();
+    }, 30);
   },
-  close() { document.getElementById('professorPanel').classList.remove('open'); },
+  close() {
+    document.getElementById('professorPanel').classList.remove('open');
+    const gear = document.getElementById('settingsGear');
+    if (gear) gear.focus();
+  },
 
   refresh() {
     const d = StorageManager.get();
@@ -2260,6 +2437,26 @@ const ProfessorPanel = {
     }
 
     const cfg = d.settings || {};
+    const tm = document.getElementById('toggleMusic');
+    if (tm) {
+      tm.textContent = 'Música: ' + (cfg.musicEnabled !== false ? 'ON' : 'OFF');
+      tm.classList.toggle('on', cfg.musicEnabled !== false);
+      tm.setAttribute('aria-pressed', String(cfg.musicEnabled !== false));
+    }
+
+    const tsfx = document.getElementById('toggleSfx');
+    if (tsfx) {
+      tsfx.textContent = 'Efeitos: ' + (cfg.sfxEnabled !== false ? 'ON' : 'OFF');
+      tsfx.classList.toggle('on', cfg.sfxEnabled !== false);
+      tsfx.setAttribute('aria-pressed', String(cfg.sfxEnabled !== false));
+    }
+
+    const mv = document.getElementById('musicVolume');
+    const mvv = document.getElementById('musicVolumeValue');
+    const musicVolume = Math.round((Number.isFinite(Number(cfg.musicVolume)) ? clamp01(Number(cfg.musicVolume)) : 0.45) * 100);
+    if (mv) mv.value = String(musicVolume);
+    if (mvv) mvv.textContent = musicVolume + '%';
+
     const activeSpeed = normalizeDifficultyKey(cfg.speed);
     document.querySelectorAll('.speed-btn').forEach(b => {
       const diffCfg = getDifficultyConfig(b.dataset.speed);
@@ -2271,37 +2468,70 @@ const ProfessorPanel = {
     const tl = document.getElementById('toggleLabels');
     tl.textContent = 'Mostrar nomes: ' + (cfg.showLabels ? 'ON' : 'OFF');
     tl.classList.toggle('on', !!cfg.showLabels);
+    tl.setAttribute('aria-pressed', String(!!cfg.showLabels));
 
     const ts = document.getElementById('toggleShapes');
     if (ts) {
       ts.textContent = 'Símbolos: ' + (cfg.showShapes ? 'ON' : 'OFF');
       ts.classList.toggle('on', !!cfg.showShapes);
+      ts.setAttribute('aria-pressed', String(!!cfg.showShapes));
     }
 
     const td = document.getElementById('toggleDalton');
     td.textContent = 'Modo daltônico: ' + (cfg.colorblind ? 'ON' : 'OFF');
     td.classList.toggle('on', !!cfg.colorblind);
+    td.setAttribute('aria-pressed', String(!!cfg.colorblind));
 
     const tn = document.getElementById('toggleNarration');
     if (tn) {
       tn.textContent = 'Narração: ' + (cfg.narration ? 'ON' : 'OFF');
       tn.classList.toggle('on', !!cfg.narration);
+      tn.setAttribute('aria-pressed', String(!!cfg.narration));
     }
 
     const tc = document.getElementById('toggleCalm');
     if (tc) {
       tc.textContent = 'Modo calmo: ' + (cfg.calmMode ? 'ON' : 'OFF');
       tc.classList.toggle('on', !!cfg.calmMode);
+      tc.setAttribute('aria-pressed', String(!!cfg.calmMode));
     }
 
     const ta = document.getElementById('toggleAccess');
     if (ta) {
-      ta.textContent = 'Modo Acessibilidade: ' + (cfg.accessibility ? 'ON' : 'OFF');
+      ta.textContent = 'Alto contraste: ' + (cfg.accessibility ? 'ON' : 'OFF');
       ta.classList.toggle('on', !!cfg.accessibility);
+      ta.setAttribute('aria-pressed', String(!!cfg.accessibility));
     }
     applyBodySettingsClasses();
   },
 
+  toggleMusic() {
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.musicEnabled = d.settings.musicEnabled === false;
+    });
+    this.refresh();
+    AudioManager.refreshSettings();
+  },
+  toggleSfx() {
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.sfxEnabled = d.settings.sfxEnabled === false;
+    });
+    this.refresh();
+    AudioManager.refreshSettings();
+    AudioManager.playClick();
+  },
+  setMusicVolume(value) {
+    const normalized = clamp01(Number(value) / 100);
+    StorageManager.set(d => {
+      if (!d.settings) d.settings = {};
+      d.settings.musicVolume = normalized;
+    });
+    const mvv = document.getElementById('musicVolumeValue');
+    if (mvv) mvv.textContent = Math.round(normalized * 100) + '%';
+    AudioManager.refreshSettings();
+  },
   setSpeed(speed) {
     StorageManager.set(d => { if (!d.settings) d.settings = {}; d.settings.speed = normalizeDifficultyKey(speed); });
     this.refresh();
@@ -2312,7 +2542,10 @@ const ProfessorPanel = {
       d.settings.showLabels = !d.settings.showLabels;
     });
     this.refresh();
-    if (Gameplay.running) Gameplay.drawScene();
+    if (Gameplay.running) {
+      Gameplay.gameplaySettings = StorageManager.get().settings || {};
+      Gameplay.drawScene();
+    }
   },
   toggleShapes() {
     StorageManager.set(d => {
@@ -2321,6 +2554,7 @@ const ProfessorPanel = {
     });
     this.refresh();
     if (Gameplay.running) {
+      Gameplay.gameplaySettings = StorageManager.get().settings || {};
       Gameplay.buildAnswerBtns();
       Gameplay.drawScene();
     }
@@ -2332,6 +2566,7 @@ const ProfessorPanel = {
     });
     this.refresh();
     if (Gameplay.running) {
+      Gameplay.gameplaySettings = StorageManager.get().settings || {};
       Gameplay.buildAnswerBtns();
       Gameplay.drawScene();
     }
@@ -2350,6 +2585,7 @@ const ProfessorPanel = {
       d.settings.calmMode = !d.settings.calmMode;
     });
     this.refresh();
+    AudioManager.refreshSettings();
   },
   toggleAccessibility() {
     StorageManager.set(d => {
@@ -2476,8 +2712,104 @@ const GameEngine = {
     applyBodySettingsClasses();
     this.populateMenuMascots();
     this.injectShakeStyle();
+    this.bindGlobalControls();
+    this.bindButtonActions();
     this.updateMenuLock();
     this.showMenu();
+  },
+
+  bindGlobalControls() {
+    if (this._controlsBound) return;
+    this._controlsBound = true;
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        const panel = document.getElementById('professorPanel');
+        if (panel && panel.classList.contains('open')) ProfessorPanel.close();
+        return;
+      }
+      if (!/^[1-6]$/.test(event.key)) return;
+      if (GameStateMachine.get() !== GameState.GAMEPLAY) return;
+      const index = Number(event.key) - 1;
+      const btn = document.querySelectorAll('.answer-btn:not(:disabled)')[index];
+      if (btn) {
+        event.preventDefault();
+        btn.click();
+      }
+    });
+  },
+
+  bindButtonActions() {
+    if (this._buttonActionsBound) return;
+    this._buttonActionsBound = true;
+    document.addEventListener('click', (event) => {
+      const target = event.target && event.target.closest ? event.target : (event.target && event.target.parentElement);
+      const btn = target && target.closest ? target.closest('button') : null;
+      if (!btn || btn.disabled || btn.classList.contains('answer-btn')) return;
+      const handled = this.handleButtonAction(btn);
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  },
+
+  handleButtonAction(btn) {
+    if (btn.id === 'settingsGear') { ProfessorPanel.open(); return true; }
+    if (btn.id === 'btnTutorial') { this.startMode('tutorial'); return true; }
+    if (btn.id === 'btnStory') { this.showMap(); return true; }
+    if (btn.classList.contains('prof-close')) { ProfessorPanel.close(); return true; }
+
+    const panelActions = {
+      toggleMusic: () => ProfessorPanel.toggleMusic(),
+      toggleSfx: () => ProfessorPanel.toggleSfx(),
+      toggleNarration: () => ProfessorPanel.toggleNarration(),
+      toggleCalm: () => ProfessorPanel.toggleCalmMode(),
+      toggleAccess: () => ProfessorPanel.toggleAccessibility(),
+      toggleLabels: () => ProfessorPanel.toggleLabels(),
+      toggleShapes: () => ProfessorPanel.toggleShapes(),
+      toggleDalton: () => ProfessorPanel.toggleDaltonism(),
+      btnDownloadReport: () => ProfessorPanel.downloadReport()
+    };
+    if (panelActions[btn.id]) {
+      panelActions[btn.id]();
+      return true;
+    }
+    if (btn.classList.contains('speed-btn') && btn.dataset.speed) {
+      ProfessorPanel.setSpeed(btn.dataset.speed);
+      return true;
+    }
+    if (btn.classList.contains('btn-danger')) {
+      ProfessorPanel.clearAllData();
+      return true;
+    }
+    if (btn.classList.contains('btn-back')) {
+      this.showMenu();
+      return true;
+    }
+    if (btn.closest('#tutorialWelcome')) {
+      TutorialManager.dismissWelcome();
+      return true;
+    }
+
+    const text = btn.textContent.replace(/\s+/g, ' ').trim().toUpperCase();
+    if (text.includes('TENTAR DE NOVO') || text.includes('REPETIR')) {
+      this.retryLevel();
+      return true;
+    }
+    if (text.includes('PRÓXIMA FASE')) {
+      const nextId = Gameplay.level ? Gameplay.level.id + 1 : 1;
+      this.startMode('story', nextId);
+      return true;
+    }
+    if (text.includes('MAPA')) {
+      this.showMap();
+      return true;
+    }
+    if (text.includes('MENU')) {
+      this.showMenu();
+      return true;
+    }
+    return false;
   },
 
   injectShakeStyle() {
@@ -2532,6 +2864,12 @@ const GameEngine = {
     const wrapStory = document.getElementById('wrapStory');
     if (wrapStory) {
       wrapStory.classList.toggle('menu-locked', !done);
+    }
+    const btnStory = document.getElementById('btnStory');
+    if (btnStory) {
+      btnStory.disabled = !done;
+      btnStory.setAttribute('aria-disabled', String(!done));
+      btnStory.setAttribute('aria-label', done ? 'Abrir modo história' : 'Modo história bloqueado. Complete o tutorial para desbloquear.');
     }
     const hintStory = document.getElementById('hintStory');
     if (hintStory) {
@@ -2593,15 +2931,19 @@ const GameEngine = {
       const unlocked = data.unlockedLevels.includes(lv.id);
       const stars = data.levelStars[lv.id] || 0;
 
-      const node = document.createElement('div');
+      const node = document.createElement('button');
+      node.type = 'button';
       node.className = 'level-node ' + (unlocked ? 'unlocked' : 'locked');
       node.style.left = (pos.x * 100) + '%';
       node.style.top = (pos.y * 100) + '%';
       if (unlocked) {
         node.innerHTML = '<div class="level-pin">' + lv.id + '</div><div class="level-emoji">' + lv.emoji + '</div><div class="level-num">' + lv.name.replace(/^[^\s]+\s/, '') + '</div><div class="level-stars">' + '⭐'.repeat(stars) + '☆'.repeat(3 - stars) + '</div>';
+        node.setAttribute('aria-label', 'Jogar fase ' + lv.id + ', ' + lv.name.replace(/^[^\s]+\s/, '') + '. ' + stars + ' de 3 estrelas.');
         node.addEventListener('click', () => this.startMode('story', lv.id));
       } else {
         node.innerHTML = '<div class="level-pin">' + lv.id + '</div><div class="lock-icon">🔒</div><div class="level-num">Fase ' + lv.id + '</div>';
+        node.disabled = true;
+        node.setAttribute('aria-label', 'Fase ' + lv.id + ' bloqueada');
       }
       nodes.appendChild(node);
     });
@@ -2859,6 +3201,13 @@ GameEngine.showAlbum = function() {
   this.showScreen('albumScreen');
   AlbumManager.render();
 };
+
+Object.assign(window, {
+  GameEngine,
+  TutorialManager,
+  ProfessorPanel,
+  AlbumManager
+});
 
 // FIX 4.2: Tela de erro amigável com retry
 function showErrorScreen(message) {

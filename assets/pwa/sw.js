@@ -1,9 +1,9 @@
-const CACHE_NAME = 'doce-acerto-v29';
+const CACHE_NAME = 'doce-acerto-v30';
 const ASSETS = [
   '../../index.html',
   './manifest.json',
   '../css/style.css',
-  '../js/script.js',
+  '../js/script.js?v=30',
   '../data/config.json',
   '../icon-512.png',
   '../imgs/menu-background.png',
@@ -20,7 +20,6 @@ const ASSETS = [
   '../img/backgrounds_fases_doce_acerto/04-vale-do-sorvete.png',
   '../img/backgrounds_fases_doce_acerto/05-castelo-de-acucar.png',
   '../img/estrada-doce.png',
-  '../img/maquina_chiclete.png',
   '../img/bolinhas_chiclete_frutinhas_v2/01-vermelho-maca.png',
   '../img/bolinhas_chiclete_frutinhas_v2/02-azul-blueberry.png',
   '../img/bolinhas_chiclete_frutinhas_v2/03-amarelo-limao.png',
